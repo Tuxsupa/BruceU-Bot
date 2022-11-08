@@ -1,0 +1,8 @@
+.env
+.pytest_cache/
+.vscode/
+bot-env/
+discord.log
+Dockerfile
+.dockerignore
+fly.toml
