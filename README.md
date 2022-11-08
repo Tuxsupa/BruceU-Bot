@@ -1,2 +1,2 @@
-# UgadanSnipas
+# BruceU Discord Bot
  ZULUL
