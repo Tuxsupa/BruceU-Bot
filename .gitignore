@@ -6,3 +6,4 @@ discord.log
 Dockerfile
 .dockerignore
 fly.toml
+__pycache__
