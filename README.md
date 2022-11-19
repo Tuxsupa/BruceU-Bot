@@ -1,2 +1,2 @@
 # BruceU Discord Bot
- ZULUL
+ZULUL
