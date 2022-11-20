@@ -13,9 +13,10 @@ load_dotenv()
 
 
 class DiscordBot(Bot):
-    def __init__(self, *args, prefix=None, **kwargs):
+    def __init__(self, *args, prefix=None, loop=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.prefix = prefix
+        self.loop = loop
 
     async def setup_hook(self):
         for file in os.listdir("cogs"):
