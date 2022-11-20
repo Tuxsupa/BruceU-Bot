@@ -44,8 +44,8 @@ class Meme_Commands(commands.Cog):
             await reaction.add_reaction("⬆️")
             await reaction.add_reaction("⬇️")
 
-    @commands.command(description="About Meme")
-    async def am(self, ctx):
+    @commands.command(description="Meme Leaderboard")
+    async def ml(self, ctx):
         # rankingQuery = sql.SQL("SELECT name, ROW_NUMBER() OVER (ORDER BY damage_dealt DESC, name) AS rows from stats")
 
         # discordSelectQuery = """SELECT name, views, upvotes, downvotes, id, created_at FROM memes WHERE name = LOWER(%s)"""
@@ -89,6 +89,7 @@ class Meme_Commands(commands.Cog):
         embed.set_footer(text="Bot made by Tuxsuper", icon_url=default.DEV.display_avatar.url)
         await ctx.send(embed=embed)
 
+    @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
         if user.bot is False:
             if reaction.message.author.id == self.client.user.id:

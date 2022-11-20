@@ -1,13 +1,16 @@
 import discord
 import os
 import logging
+import asyncio
 
 from utils import default
-from discord.ext import commands
 from dotenv import load_dotenv
 
 
 load_dotenv()
+
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
 
 logger = logging.getLogger("discord")
 logger.setLevel(logging.DEBUG)
@@ -19,10 +22,13 @@ intent = discord.Intents.all()
 
 
 client = default.DiscordBot(
-    command_prefix="$", help_command=None, case_insensitive=True, intents=intent, owner_id=270224083684163584
+    command_prefix="$", help_command=None, case_insensitive=True, intents=intent, owner_id=270224083684163584, loop=loop
 )
 
 
 # TOKEN = os.environ["BOT_TEST_TOKEN"]
 TOKEN = os.environ["BOT_TOKEN"]
-client.run(TOKEN)
+
+
+loop.create_task(client.run(TOKEN))
+loop.run_forever()
