@@ -21,7 +21,7 @@ class Meme_Commands(commands.Cog):
             await default.connectDB(discordUpdateQuery, discordUpdateInsert)
 
             votes = len(discordSelect[0][2]) - len(discordSelect[0][3])
-            text = "({}) Meme '{}': {}".format(votes, discordSelect[0][0], discordSelect[0][1])
+            text = f"({votes}) Meme '{discordSelect[0][0]}': {discordSelect[0][1]}"
             reaction = await ctx.send(text, allowed_mentions=discord.AllowedMentions.none())
             await reaction.add_reaction("⬆️")
             await reaction.add_reaction("⬇️")
@@ -39,7 +39,7 @@ class Meme_Commands(commands.Cog):
             await default.connectDB(discordUpdateQuery, discordUpdateInsert)
 
             votes = len(discordSelect[0][2]) - len(discordSelect[0][3])
-            text = "({}) Meme '{}': {}".format(votes, discordSelect[0][0], discordSelect[0][1])
+            text = f"({votes}) Meme '{discordSelect[0][0]}': {discordSelect[0][1]}"
             reaction = await ctx.send(text, allowed_mentions=discord.AllowedMentions.none())
             await reaction.add_reaction("⬆️")
             await reaction.add_reaction("⬇️")
@@ -67,7 +67,7 @@ class Meme_Commands(commands.Cog):
             counter = 1
             for meme in discordSelect:
                 votes = len(meme[1]) - len(meme[2])
-                text = text + "#{} {} - ({}) votes\n".format(counter, meme[0], votes)
+                text = text + f"#{counter} {meme[0]} - ({votes}) votes\n"
                 counter = counter + 1
 
             embed.add_field(name="Top 10 Best", value=text, inline=True)
@@ -80,7 +80,7 @@ class Meme_Commands(commands.Cog):
             counter = 1
             for meme in discordSelect:
                 votes = len(meme[1]) - len(meme[2])
-                text = text + "#{} {} - ({}) votes\n".format(counter, meme[0], votes)
+                text = text + f"#{counter} {meme[0]} - ({votes}) votes\n"
                 counter = counter + 1
 
             embed.add_field(name="Top 10 Worst", value=text, inline=True)

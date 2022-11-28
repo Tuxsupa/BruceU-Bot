@@ -54,7 +54,7 @@ class Mod_Commands(commands.Cog):
                         await default.embedMessage(
                             self,
                             ctx,
-                            "User {} banned from using command {}".format(member, command),
+                            f"User {member} banned from using command {command}",
                         )
                     else:
                         await default.embedMessage(self, ctx, description="Mention member not found")
@@ -96,7 +96,7 @@ class Mod_Commands(commands.Cog):
                             await default.embedMessage(
                                 self,
                                 ctx,
-                                "User {} unbanned from using command {}".format(member, command),
+                                f"User {member} unbanned from using command {command}",
                             )
                         else:
                             await default.embedMessage(self, ctx, description="User not found")
