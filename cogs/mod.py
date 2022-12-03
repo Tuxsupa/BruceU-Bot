@@ -57,13 +57,13 @@ class Mod_Commands(commands.Cog):
                             f"User {member} banned from using command {command}",
                         )
                     else:
-                        await default.embedMessage(self, ctx, description="Mention member not found")
+                        await  default.embedMessage(ctx, description="Mention member not found")
                 else:
-                    await default.embedMessage(self, ctx, description="Invalid Argument, please use mentions")
+                    await  default.embedMessage(ctx, description="Invalid Argument, please use mentions")
             else:
-                await default.embedMessage(self, ctx, description="Invalid command")
+                await  default.embedMessage(ctx, description="Invalid command")
         else:
-            await default.embedMessage(self, ctx, description="You do not have permission to use this command")
+            await  default.embedMessage(ctx, description="You do not have permission to use this command")
 
     @commands.hybrid_command(description="Unbans someone from using commands (Admin only)")
     async def unban(self, ctx, command, mention):
@@ -99,15 +99,15 @@ class Mod_Commands(commands.Cog):
                                 f"User {member} unbanned from using command {command}",
                             )
                         else:
-                            await default.embedMessage(self, ctx, description="User not found")
+                            await  default.embedMessage(ctx, description="User not found")
                     else:
-                        await default.embedMessage(self, ctx, description="Mention member not found")
+                        await  default.embedMessage(ctx, description="Mention member not found")
                 else:
-                    await default.embedMessage(self, ctx, description="Invalid Argument, please use mentions")
+                    await  default.embedMessage(ctx, description="Invalid Argument, please use mentions")
             else:
-                await default.embedMessage(self, ctx, description="Invalid command")
+                await  default.embedMessage(ctx, description="Invalid command")
         else:
-            await default.embedMessage(self, ctx, description="You do not have permission to use this command")
+            await  default.embedMessage(ctx, description="You do not have permission to use this command")
 
 
 async def setup(client):

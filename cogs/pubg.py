@@ -28,15 +28,15 @@ class PUBG_Commands(commands.Cog):
                         discordQuery = """INSERT INTO discord_profiles (ID, IMAGE) VALUES (%s,%s) ON CONFLICT (ID) DO UPDATE SET IMAGE=%s"""
                         discordInsert = (member.id, link, link)
                         await default.connectDB(discordQuery, discordInsert)
-                        await default.embedMessage(self, ctx, description="Image added for {}!".format(mention))
+                        await  default.embedMessage(ctx, description="Image added for {}!".format(mention))
                     else:
-                        await default.embedMessage(self, ctx, description="No link present")
+                        await  default.embedMessage(ctx, description="No link present")
                 else:
-                    await default.embedMessage(self, ctx, description="Mention member not found")
+                    await  default.embedMessage(ctx, description="Mention member not found")
             else:
-                await default.embedMessage(self, ctx, description="Invalid Argument, please use mentions")
+                await  default.embedMessage(ctx, description="Invalid Argument, please use mentions")
         else:
-            await default.embedMessage(self, ctx, description="You don't have permission to use this command")
+            await  default.embedMessage(ctx, description="You don't have permission to use this command")
 
     @commands.hybrid_command(
         aliases=["fa"], description="Force create/replaces a PUBG and Discord name to someones profile (Admin only)"
@@ -54,7 +54,7 @@ class PUBG_Commands(commands.Cog):
                         player_stat = await default.requestAio(SNIPA_URL, pubgData.PUBG_HEADER)
 
                         if "errors" in player_stat:
-                            await default.embedMessage(self, ctx, description="Nickname doesn't exist in PUBG")
+                            await  default.embedMessage(ctx, description="Nickname doesn't exist in PUBG")
                             return
                         elif "data" in player_stat:
                             discordInsertQuery = """INSERT INTO discord_profiles (ID, PUBG_NAME) VALUES (%s,%s) ON CONFLICT (ID) DO UPDATE SET PUBG_NAME=%s"""
@@ -73,15 +73,15 @@ class PUBG_Commands(commands.Cog):
                             )
                         else:
                             print("UNKNOWN")
-                            await default.embedMessage(self, ctx, description="Uknown error idk kev KUKLE")
+                            await  default.embedMessage(ctx, description="Uknown error idk kev KUKLE")
                     else:
-                        await default.embedMessage(self, ctx, description="No PUBG name mentioned")
+                        await  default.embedMessage(ctx, description="No PUBG name mentioned")
                 else:
-                    await default.embedMessage(self, ctx, description="Mention member not found")
+                    await  default.embedMessage(ctx, description="Mention member not found")
             else:
-                await default.embedMessage(self, ctx, description="Invalid Argument, please use mentions")
+                await  default.embedMessage(ctx, description="Invalid Argument, please use mentions")
         else:
-            await default.embedMessage(self, ctx, description="You don't have permission to use this command")
+            await  default.embedMessage(ctx, description="You don't have permission to use this command")
 
     @commands.hybrid_command(aliases=["b"], description="Adds or removes bounty to someone (Admin only)")
     @app_commands.choices(
@@ -100,7 +100,7 @@ class PUBG_Commands(commands.Cog):
                 player_stat = await default.requestAio(SNIPA_URL, pubgData.PUBG_HEADER)
 
                 if "errors" in player_stat:
-                    await default.embedMessage(self, ctx, description="Nickname {} doesn't exist in PUBG".format(name))
+                    await  default.embedMessage(ctx, description="Nickname {} doesn't exist in PUBG".format(name))
                     return
                 elif "data" in player_stat:
                     if choice == "add":
@@ -122,7 +122,7 @@ class PUBG_Commands(commands.Cog):
 
                         rankingQuery = """WITH cte AS (SELECT name, DENSE_RANK() OVER(ORDER BY score DESC) ranking FROM stats) UPDATE stats SET ranking = cte.ranking FROM cte WHERE stats.name LIKE cte.name"""
                         await default.connectDB(rankingQuery)
-                        await default.embedMessage(self, ctx, description="Bounty {} added to {}".format(value, name))
+                        await  default.embedMessage(ctx, description="Bounty {} added to {}".format(value, name))
                     elif choice == "remove":
                         statsQuery = """SELECT name FROM stats WHERE NAME LIKE %s"""
                         statsInsert = (name,)
@@ -137,12 +137,12 @@ class PUBG_Commands(commands.Cog):
                                 "Bounty {} deducted from {}".format(value, name),
                             )
                         else:
-                            await default.embedMessage(self, ctx, description="Name not in database")
+                            await  default.embedMessage(ctx, description="Name not in database")
                             return
             else:
-                await default.embedMessage(self, ctx, description="Invalid command")
+                await  default.embedMessage(ctx, description="Invalid command")
         else:
-            await default.embedMessage(self, ctx, description="You do not have permission to use this command")
+            await  default.embedMessage(ctx, description="You do not have permission to use this command")
 
     @commands.hybrid_command(description="Deletes image from someones profile (Admin only)")
     @app_commands.choices(
@@ -182,15 +182,15 @@ class PUBG_Commands(commands.Cog):
                                     "PUBG name deleted from user {}".format(member),
                                 )
                         else:
-                            await default.embedMessage(self, ctx, description="User not found")
+                            await  default.embedMessage(ctx, description="User not found")
                     else:
-                        await default.embedMessage(self, ctx, description="Mention member not found")
+                        await  default.embedMessage(ctx, description="Mention member not found")
                 else:
-                    await default.embedMessage(self, ctx, description="Invalid Argument, please use mentions")
+                    await  default.embedMessage(ctx, description="Invalid Argument, please use mentions")
             else:
-                await default.embedMessage(self, ctx, description="Invalid command")
+                await  default.embedMessage(ctx, description="Invalid command")
         else:
-            await default.embedMessage(self, ctx, description="You do not have permission to use this command")
+            await  default.embedMessage(ctx, description="You do not have permission to use this command")
 
     @commands.hybrid_command(aliases=["i"], description="Adds your PUBG character to your profile")
     async def image(self, ctx, link):
@@ -204,13 +204,13 @@ class PUBG_Commands(commands.Cog):
                 discordInsert = (ctx.author.id, link, "", link)
                 await default.connectDB(discordQuery, discordInsert)
                 if discordSelect[1] is None:
-                    await default.embedMessage(self, ctx, description="Image added!")
+                    await  default.embedMessage(ctx, description="Image added!")
                 else:
-                    await default.embedMessage(self, ctx, description="Image replaced!")
+                    await  default.embedMessage(ctx, description="Image replaced!")
             else:
-                await default.embedMessage(self, ctx, description="You are banned from adding images")
+                await  default.embedMessage(ctx, description="You are banned from adding images")
         else:
-            await default.embedMessage(self, ctx, description="No link present")
+            await  default.embedMessage(ctx, description="No link present")
 
     @commands.hybrid_command(
         aliases=["a"], description="Adds your name to the snipa list and add/replace PUBG name in profile"
@@ -221,7 +221,7 @@ class PUBG_Commands(commands.Cog):
         player_stat = await default.requestAio(SNIPA_URL, pubgData.PUBG_HEADER)
 
         if "errors" in player_stat:
-            await default.embedMessage(self, ctx, description="Nickname doesn't exist in PUBG")
+            await  default.embedMessage(ctx, description="Nickname doesn't exist in PUBG")
             return
         elif "data" in player_stat:
             discordSelectQuery = """SELECT pubg_name, banned_commands from discord_profiles WHERE id = %s"""
@@ -262,7 +262,7 @@ class PUBG_Commands(commands.Cog):
                         "Name already taken! If it's yours ask the mods to remove it from the person who took it",
                     )
             else:
-                await default.embedMessage(self, ctx, description="You are banned from adding names to snipa list")
+                await  default.embedMessage(ctx, description="You are banned from adding names to snipa list")
         else:
             print("UNKNOWN")
 
@@ -553,7 +553,7 @@ class PUBG_Commands(commands.Cog):
             offset = 0
         elif value.isdigit():  # Number used
             if int(value) > 999:
-                await default.embedMessage(self, ctx, description="Please type numbers less than 1000")
+                await  default.embedMessage(ctx, description="Please type numbers less than 1000")
                 return
             else:
                 page = int(value) - 1
@@ -699,7 +699,7 @@ class PUBG_Commands(commands.Cog):
                 offset = 0
             elif value.isdigit():  # Number used
                 if int(value) > 999:
-                    await default.embedMessage(self, ctx, description="Please type numbers less than 1000")
+                    await  default.embedMessage(ctx, description="Please type numbers less than 1000")
                     return
                 else:
                     page = int(value)
@@ -919,7 +919,7 @@ class PUBG_Commands(commands.Cog):
             page = 1
         elif value.isdigit():  # Number used
             if int(value) > 999:
-                await default.embedMessage(self, ctx, description="Please type numbers less than 1000")
+                await  default.embedMessage(ctx, description="Please type numbers less than 1000")
                 return
             else:
                 page = int(value)
@@ -930,7 +930,7 @@ class PUBG_Commands(commands.Cog):
                     page = math.ceil((index + 1) / 20)
                     break
             if page == -1:
-                await default.embedMessage(self, ctx, description="Weapon {} does not exist in the scoretable".format(value))
+                await  default.embedMessage(ctx, description="Weapon {} does not exist in the scoretable".format(value))
                 return
 
         limit = page * 20

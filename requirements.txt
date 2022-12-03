@@ -6,3 +6,6 @@ Pillow>=9.3.0
 psycopg>=3.1.4
 python-dotenv>=0.21.0
 validators>=0.20.0
+twitchAPI>=3.0.1
+tweepy>=4.12.1
+async-lru>=1.0.3
