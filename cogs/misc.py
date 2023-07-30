@@ -1,13 +1,13 @@
 import random
 import datetime
 import time
-import json
-import asyncio
+# import json
+# import asyncio
 
 import discord
 import aiohttp
 
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord import app_commands
 
 from dotenv import load_dotenv
@@ -96,6 +96,14 @@ class Misc_Commands(commands.Cog):
             await ctx.author.send(embed=embed)
         except discord.Forbidden:
             await ctx.send(content="Couldn't DM you (blocked/DM's closed)")
+
+    @commands.hybrid_command(description="Pings Foxhole Mugas. Only Foxhole admins can use it")
+    @commands.has_role(1117895934773313547) # 1117895934773313547
+    async def foxhole(self, ctx: commands.Context, *, message: str):
+        await ctx.send(content=f"<@&1117904228418076732>\n\n{message}",
+                allowed_mentions=discord.AllowedMentions(everyone=False, users=False, roles=[ctx.guild.get_role(1117904228418076732)], replied_user=False))
+
+        await ctx.message.delete()
 
 
     # @commands.command(description="Turns markov on/off")

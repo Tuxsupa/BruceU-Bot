@@ -10,8 +10,8 @@ from tweepy.asynchronous import AsyncClient
 from dotenv import load_dotenv
 
 from twitchAPI.twitch import Twitch
-from twitchAPI.oauth import UserAuthenticator
-from twitchAPI.types import AuthScope
+# from twitchAPI.oauth import UserAuthenticator
+# from twitchAPI.types import AuthScope
 from twitchAPI.helper import first
 from twitchAPI.eventsub import EventSub
 
@@ -28,20 +28,19 @@ class TwitchAPI(object):
 
     async def main(self):
         twitterAuth = tweepy.OAuth1UserHandler(
-            os.environ["TWITTER_API"],
-            os.environ["TWITTER_SECRET"],
-            os.environ["TWITTER_ACCESS_TOKEN"],
-            os.environ["TWITTER_ACCESS_SECRET"],
+            consumer_key = os.environ["TWITTER_CONSUMER_KEY"],
+            consumer_secret = os.environ["TWITTER_CONSUMER_SECRET"],
+            access_token = os.environ["TWITTER_ACCESS_TOKEN"],
+            access_token_secret = os.environ["TWITTER_ACCESS_SECRET"]
         )
 
         self.twitterAPI_v1 = tweepy.API(twitterAuth)
 
         self.twitterAPI_v2 = AsyncClient(
-            os.environ["TWITTER_ACCESS_TOKEN"],
-            os.environ["TWITTER_API"],
-            os.environ["TWITTER_SECRET"],
-            os.environ["TWITTER_ACCESS_TOKEN"],
-            os.environ["TWITTER_ACCESS_SECRET"],
+            consumer_key = os.environ["TWITTER_CONSUMER_KEY"],
+            consumer_secret = os.environ["TWITTER_CONSUMER_SECRET"],
+            access_token = os.environ["TWITTER_ACCESS_TOKEN"],
+            access_token_secret = os.environ["TWITTER_ACCESS_SECRET"]
         )
 
         self.TWITCH = await Twitch(os.environ["TWITCH_ID"], os.environ["TWITCH_SECRET"])
@@ -283,15 +282,15 @@ class TwitchAPI(object):
             url=f'https://twitch.tv/{data["event"]["broadcaster_user_login"]}',
         )
         # embed.set_image(url="https://cdn.discordapp.com/attachments/1002241010115559464/1025614839118307398/unknown.png")
-        # embed.set_image(url="https://cdn.discordapp.com/attachments/988994875234082829/1061429150818242662/tenor_2.gif")
-        embed.set_image(url="https://cdn.discordapp.com/attachments/988994875234082829/1088253119454003291/forsenSmug.webp")
+        embed.set_image(url="https://cdn.discordapp.com/attachments/988994875234082829/1061429150818242662/tenor_2.gif")
+        # embed.set_image(url="https://cdn.discordapp.com/attachments/988994875234082829/1088253119454003291/forsenSmug.webp")
         embed.set_footer(text="Bot made by Tuxsuper", icon_url=self.client.DEV.display_avatar.url)
 
         await self.discordChannel.send(embed=embed)
 
         # mediaID = self.twitterAPI_v1.media_upload("./assets/images/forsenDespair.png")
-        # mediaID = self.twitterAPI_v1.media_upload("./assets/images/minecraft.gif")
-        mediaID = self.twitterAPI_v1.media_upload("./assets/images/forsenSmug.webp")
+        mediaID = self.twitterAPI_v1.media_upload("./assets/images/minecraft.gif")
+        # mediaID = self.twitterAPI_v1.media_upload("./assets/images/forsenSmug.webp")
 
         await self.twitterAPI_v2.create_tweet(text="Forsen just went offline... Now what...", media_ids=[mediaID.media_id])
 

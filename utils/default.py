@@ -6,8 +6,6 @@ import asyncio
 import psycopg
 import aiohttp
 import discord
-# import sqlparse
-# import asyncpg
 
 from discord.ext.commands import Bot
 from discord.ext import commands, tasks
@@ -18,16 +16,17 @@ from fake_useragent import UserAgent
 from dotenv import load_dotenv
 
 from utils import pubgData, twitchAPI
-# from utils import twitchAPI_Test
+from utils import twitchAPI_Test
 
 load_dotenv()
 
 
 class DiscordBot(Bot):
-    def __init__(self, *args, prefix=None, loop: asyncio.AbstractEventLoop = None, **kwargs):
+    def __init__(self, *args, prefix=None, loop: asyncio.AbstractEventLoop = None, isTest: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         self.prefix = prefix
         self.loop = loop
+        self.isTest = isTest
 
     async def setup_hook(self):
         for file in os.listdir("cogs"):
@@ -42,10 +41,12 @@ class DiscordBot(Bot):
         if not updateEverything.is_running():
             updateEverything.start()
 
-        self.DEV = await self.fetch_user(self.owner_id)
+        self.DEV = await self.fetch_user(os.environ["OWNER_ID"])
 
-        self.twitch = twitchAPI.TwitchAPI(client=self, loop=self.loop)
-        # self.twitch = twitchAPI_Test.TwitchAPI(client=self, loop=self.loop)
+        if self.isTest is False:
+            self.twitch = twitchAPI.TwitchAPI(client=self, loop=self.loop)
+        else:
+            self.twitch = twitchAPI_Test.TwitchAPI(client=self, loop=self.loop)
 
         self.loop.create_task(self.twitch.main())
 
@@ -57,6 +58,10 @@ class DiscordBot(Bot):
         await self.markovFunction(ctx=ctx)
 
         await self.process_commands(ctx)
+
+    async def on_reaction_add(self, reaction: discord.Reaction, user: discord.Member):
+        channel = await self.fetch_channel(1097639586458505336)
+        await channel.send(f"reaction: {reaction} | user: {user}")
 
     async def on_command_error(self, message, error):
         print(error)
@@ -77,15 +82,24 @@ class DiscordBot(Bot):
             result = ctx.content
 
             checkEmotes = re.findall("((?:(?!<:|<a:):)(?:(?!\w{1,64}:\d{17,18})\w{1,64})(?:(?!>):))", result)
+            checkEmotes = [emote.lower() for emote in checkEmotes]
+
             findEmotes = []
 
             if checkEmotes:
                 findEmotes = [str(e.split(":")[1].replace(":", "")) for e in checkEmotes]
 
             if findEmotes:
-                findEmotes = [discord.utils.get(self.emojis, name=e) for e in findEmotes]
+                _findEmotes = []
+                for [existsNumber, textEmoji] in enumerate(findEmotes):
+                    for emoji in self.emojis:
+                        if emoji.name.lower() == textEmoji.lower():
+                            if emoji not in [item[0] for item in _findEmotes]:
+                                _findEmotes.append([emoji, existsNumber])
 
-                if findEmotes and not all(i is None for i in findEmotes):
+                findEmotes = _findEmotes
+
+                if findEmotes and not all(i[0] is None for i in findEmotes):
                     webhooks = await ctx.channel.webhooks()
                     if not any(webhook.user.id == self.user.id for webhook in webhooks):
                         print("Created Webhooks")
@@ -98,11 +112,25 @@ class DiscordBot(Bot):
                             botWebhook = webhook
                             break
 
-                    for emote in findEmotes:
-                        if emote:
-                            result = re.sub(
-                                "((?:(?!<:|<a:):)(?:(?!\w{1,64}:\d{17,18})\w{1,64})(?:(?!>):))", str(emote), result, 1
-                            )
+                    finalEmotes = []
+
+                    for [numberCheck, checkEmote] in enumerate(checkEmotes):
+                        for [findEmote, numberFind] in findEmotes:
+                            if numberCheck==numberFind:
+                                finalEmotes.append([findEmote, checkEmote])
+                                break
+
+                    checkEmotes = [*set(checkEmotes)]
+
+                    for finalEmote, finalText in finalEmotes:
+                        if finalEmote:
+                            test = re.compile(re.escape(finalText), re.IGNORECASE)
+                            result = test.sub(str(finalEmote), result)
+
+                            # result = re.sub(
+                            #     "((?:(?!<:|<a:):)(?:(?!\w{1,64}:\d{17,18})\w{1,64})(?:(?!>):))", str(emote), result, 1
+                            # )
+
 
                     embeds = []
 
