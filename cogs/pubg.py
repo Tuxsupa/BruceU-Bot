@@ -21,27 +21,24 @@ class PUBG_Commands(commands.Cog):
     async def check_mention(self, ctx: commands.Context):
         if ctx.message.mentions:
             return True
-        else:
-            await default.embedMessage(client=self.client, ctx=ctx, description="Invalid Argument, please use mentions")
-            return False
+        await default.embedMessage(client=self.client, ctx=ctx, description="Invalid Argument, please use mentions")
+        return False
 
     async def check_link(self, ctx: commands.Context, link: str):
         if validators.url(link):
             return True
-        else:
-            await default.embedMessage(client=self.client, ctx=ctx, description="No link present")
-            return False
+        await default.embedMessage(client=self.client, ctx=ctx, description="No link present")
+        return False
 
     @commands.hybrid_command(aliases=["fi"], description="Force inserts an image to someones profile (Admin only)")
     async def forceimage(self, ctx: commands.Context, mention: discord.Member, link: str):
-        if await default.check_permissions(self.client, ctx):
-            if await self.check_link(ctx, link):
-                discordQuery = (
-                    """INSERT INTO discord_profiles (ID, IMAGE) VALUES (%s,%s) ON CONFLICT (ID) DO UPDATE SET IMAGE=%s"""
-                )
-                discordInsert = (mention.id, link, link)
-                await default.connectDB(discordQuery, discordInsert)
-                await default.embedMessage(client=self.client, ctx=ctx, description=f"Image added for {mention}!")
+        if await default.check_permissions(self.client, ctx) and await self.check_link(ctx, link):
+            discordQuery = (
+                """INSERT INTO discord_profiles (ID, IMAGE) VALUES (%s,%s) ON CONFLICT (ID) DO UPDATE SET IMAGE=%s"""
+            )
+            discordInsert = (mention.id, link, link)
+            await default.connectDB(discordQuery, discordInsert)
+            await default.embedMessage(client=self.client, ctx=ctx, description=f"Image added for {mention}!")
 
     @commands.hybrid_command(
         aliases=["fa"], description="Force create/replaces a PUBG and Discord name to someones profile (Admin only)"
@@ -80,10 +77,7 @@ class PUBG_Commands(commands.Cog):
     )
     async def bounty(self, ctx: commands.Context, choice, value: int, name: str):
         checkChoices = ctx.command.app_command.parameters[0].choices
-        listChoices = []
-        for choices in checkChoices:
-            listChoices.append(choices.value)
-
+        listChoices = [choices.value for choices in checkChoices]
         if await default.check_permissions(self.client, ctx):
             if choice in listChoices:
                 SNIPA_URL = f"https://api.pubg.com/shards/steam/players?filter[playerNames]={name}"
@@ -141,10 +135,7 @@ class PUBG_Commands(commands.Cog):
     )
     async def delete(self, ctx: commands.Context, choice, mention: discord.Member):
         checkChoices = ctx.command.app_command.parameters[0].choices
-        listChoices = []
-        for choices in checkChoices:
-            listChoices.append(choices.value)
-
+        listChoices = [choices.value for choices in checkChoices]
         if await default.check_permissions(self.client, ctx):
             if choice in listChoices:
                 discordSelectQuery = """SELECT id from discord_profiles WHERE id = %s"""
@@ -279,9 +270,7 @@ class PUBG_Commands(commands.Cog):
 
         else:
             await default.embedMessage(
-                client=self.client,
-                ctx=ctx,
-                description=f"Name used does not exist",
+                client=self.client, ctx=ctx, description="Name used does not exist"
             )
             return
 
@@ -341,17 +330,10 @@ class PUBG_Commands(commands.Cog):
         statsSelect = await default.connectDB(statsSelectQuery, statsSelectInsert)
         statsSelect = statsSelect[0]
 
-        if statsSelect[2] == 0:  # If deaths == 0 then kd is number of kills
-            kd = statsSelect[1]
-        else:  # Else it does normal kd
-            kd = statsSelect[1] / statsSelect[2]
-
+        kd = statsSelect[1] if statsSelect[2] == 0 else statsSelect[1] / statsSelect[2]
         distanceTravelledTotal = (
             statsSelect[5][0] + statsSelect[5][1] + statsSelect[5][2]
         ) / 1000  # Sum all movement stats and convert them to Km
-
-        with open("./assets/dictionaries/typeKill.json", "r", encoding="utf-8") as f:
-            typeKill = json.loads(f.read())
 
         with open("./assets/dictionaries/simpleCause.json", "r", encoding="utf-8") as f:
             simpleCause = json.loads(f.read())
@@ -364,10 +346,7 @@ class PUBG_Commands(commands.Cog):
         counter = Counter(playerKills[2] for playerKills in playerSelect)
         print(counter)
 
-        for kill in counter:
-            typeKill[kill] = typeKill[kill] + counter[kill]
-
-        if typeKill["Gun"] > 0:  # If you have a Gun Kill
+        if "Gun" in counter:  # If you have a Gun Kill
             badge = Image.open("./assets/images/badgehaHAA.png")
         elif statsSelect[8] <= 10:  # Else if you are top 10
             if statsSelect[8] == 1:  # If you are top 1
@@ -409,14 +388,19 @@ class PUBG_Commands(commands.Cog):
         ]
 
         for index, kill in enumerate(typeKill_Order):
-            if index == 6:
-                xAxis = 558
-                yAxis = 273
-
             if index == 11:
                 color = (255, 0, 0)
 
-            reportCard.text((xAxis, yAxis), f"x {typeKill[kill]}", color, font=counter_font)
+            elif index == 6:
+                xAxis = 558
+                yAxis = 273
+
+            reportCard.text(
+                (xAxis, yAxis),
+                f"x {counter.get(kill, 0)}",
+                color,
+                font=counter_font,
+            )
 
             yAxis = yAxis + 208
 
@@ -549,10 +533,7 @@ class PUBG_Commands(commands.Cog):
 
         for index, user in enumerate(statsSelect):
             if value is not None and not value.isdigit():
-                if user[1].lower() == value.lower():
-                    color = (255, 255, 0)
-                else:
-                    color = (255, 255, 255)
+                color = (255, 255, 0) if user[1].lower() == value.lower() else (255, 255, 255)
             else:
                 color = (255, 255, 255)
 
@@ -597,16 +578,6 @@ class PUBG_Commands(commands.Cog):
         if choice is not None:
             choice = choice.lower()
 
-        valueArray = {
-            "kills": "kills",
-            "deaths": "deaths",
-            "kd": "kills/CASE WHEN deaths = 0 THEN 1 ELSE deaths END::real AS KD",
-            "damage": "ROUND(damage_dealt::numeric,2) AS damage",
-            "snipakills": "snipas_killed",
-            "distance": "(distance_travelled[1]+distance_travelled[2]+distance_travelled[3])/1000 AS distance",
-            "suicides": "suicides",
-            "bounty": "bounty",
-        }
         if choice in self.customboardArray:
             if value is None:  # No name used
                 page = 1
@@ -689,6 +660,16 @@ class PUBG_Commands(commands.Cog):
                 page = math.ceil((row) / 20)
                 offset = (page - 1) * 20
 
+            valueArray = {
+                "kills": "kills",
+                "deaths": "deaths",
+                "kd": "kills/CASE WHEN deaths = 0 THEN 1 ELSE deaths END::real AS KD",
+                "damage": "ROUND(damage_dealt::numeric,2) AS damage",
+                "snipakills": "snipas_killed",
+                "distance": "(distance_travelled[1]+distance_travelled[2]+distance_travelled[3])/1000 AS distance",
+                "suicides": "suicides",
+                "bounty": "bounty",
+            }
             match choice:
                 case "kd":
                     statsSelectQuery = sql.SQL(
@@ -763,10 +744,7 @@ class PUBG_Commands(commands.Cog):
 
                 # valueArray = {"kills":user[2],"deaths":user[3],"damage":round(user[4],2),"snipakills":user[5],"suicides":user[6],"bounty":user[7]}
                 if value is not None and not value.isdigit():
-                    if user[0].lower() == value.lower():
-                        color = (255, 255, 0)
-                    else:
-                        color = (255, 255, 255)
+                    color = (255, 255, 0) if user[0].lower() == value.lower() else (255, 255, 255)
                 else:
                     color = (255, 255, 255)
 
@@ -863,10 +841,7 @@ class PUBG_Commands(commands.Cog):
 
             if index < limit and index >= limit - 20:
                 if value is not None and not value.isdigit():
-                    if score.lower() == value.lower():
-                        color = (255, 255, 0)
-                    else:
-                        color = (255, 255, 255)
+                    color = (255, 255, 0) if score.lower() == value.lower() else (255, 255, 255)
                 else:
                     color = (255, 255, 255)
 

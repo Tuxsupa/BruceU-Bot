@@ -1,12 +1,13 @@
 .env
+__pycache__
 .pytest_cache/
 .vscode/
+.venv/
 bot-env/
 discord.log
 Dockerfile
 .dockerignore
 fly.toml
-__pycache__
 reposter.py
 twitchAPI_Test.py
 memes.py

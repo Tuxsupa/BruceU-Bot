@@ -1,11 +1,11 @@
 import os
-import re
 import textwrap
 import datetime
 import asyncio
 import psycopg
 import aiohttp
 import discord
+import regex as re
 
 from discord.ext.commands import Bot
 from discord.ext import commands, tasks
@@ -32,7 +32,7 @@ class DiscordBot(Bot):
         for file in os.listdir("cogs"):
             if file.endswith(".py"):
                 name = file[:-3]
-                if name != "memes":
+                if name not in ('memes', 'minecraft'):
                     await self.load_extension(f"cogs.{name}")
 
         if not hourlyOER.is_running():
@@ -65,115 +65,111 @@ class DiscordBot(Bot):
 
     async def on_command_error(self, message, error):
         print(error)
-        if isinstance(error, commands.MissingRole):
-            await embedMessage(client=self, ctx=message, description=error)
-        elif isinstance(error, commands.BadArgument):
-            await embedMessage(client=self, ctx=message, description=error)
-        elif isinstance(error, commands.MissingRequiredArgument):
+        if isinstance(
+            error,
+            (
+                commands.MissingRole,
+                commands.BadArgument,
+                commands.MissingRequiredArgument,
+            ),
+        ):
             await embedMessage(client=self, ctx=message, description=error)
         elif isinstance(error, commands.CommandInvokeError):
             error = error.original
             if isinstance(error, discord.errors.Forbidden):
-                await embedMessage(client=self, ctx=message, description="Error " + error)
+                await embedMessage(client=self, ctx=message, description=f"Error {error}")
 
     @commands.bot_has_permissions(manage_messages=True, manage_webhooks=True)
     async def emoteFunction(self, ctx: discord.Message):
-        if ctx.author.bot is False:
-            result = ctx.content
+        if ctx.author.bot is not False:
+            return
+        result = ctx.content
 
-            checkEmotes = re.findall("((?:(?!<:|<a:):)(?:(?!\w{1,64}:\d{17,18})\w{1,64})(?:(?!>):))", result)
-            checkEmotes = [emote.lower() for emote in checkEmotes]
+        checkEmotes = re.findall("((?:(?!<:|<a:):)(?:(?!\w{1,64}:\d{17,18})\w{1,64})(?:(?!>):))", result)
+        checkEmotes = [emote.lower() for emote in checkEmotes]
 
-            findEmotes = []
+        findEmotes = []
 
-            if checkEmotes:
-                findEmotes = [str(e.split(":")[1].replace(":", "")) for e in checkEmotes]
+        if checkEmotes:
+            findEmotes = [str(e.split(":")[1].replace(":", "")) for e in checkEmotes]
 
-            if findEmotes:
-                _findEmotes = []
-                for [existsNumber, textEmoji] in enumerate(findEmotes):
-                    for emoji in self.emojis:
-                        if emoji.name.lower() == textEmoji.lower():
-                            if emoji not in [item[0] for item in _findEmotes]:
-                                _findEmotes.append([emoji, existsNumber])
+        if findEmotes:
+            _findEmotes = []
+            for [existsNumber, textEmoji] in enumerate(findEmotes):
+                for emoji in self.emojis:
+                    if emoji.name.lower() == textEmoji.lower() and emoji not in [item[0] for item in _findEmotes]:
+                        _findEmotes.append([emoji, existsNumber])
 
-                findEmotes = _findEmotes
+            findEmotes = _findEmotes
 
-                if findEmotes and not all(i[0] is None for i in findEmotes):
-                    webhooks = await ctx.channel.webhooks()
-                    if not any(webhook.user.id == self.user.id for webhook in webhooks):
-                        print("Created Webhooks")
-                        await ctx.channel.create_webhook(name="BruceU-1")
-                        await ctx.channel.create_webhook(name="BruceU-2")
-                        webhooks = await ctx.channel.webhooks()
+        if findEmotes and any(i[0] is not None for i in findEmotes):
+            webhooks = await ctx.channel.webhooks()
+            if all(webhook.user.id != self.user.id for webhook in webhooks):
+                print("Created Webhooks")
+                await ctx.channel.create_webhook(name="BruceU-1")
+                await ctx.channel.create_webhook(name="BruceU-2")
+                webhooks = await ctx.channel.webhooks()
 
-                    for webhook in webhooks:
-                        if webhook.user.id == self.user.id:
-                            botWebhook = webhook
-                            break
+            for webhook in webhooks:
+                if webhook.user.id == self.user.id:
+                    botWebhook = webhook
+                    break
 
-                    finalEmotes = []
+            finalEmotes = []
 
-                    for [numberCheck, checkEmote] in enumerate(checkEmotes):
-                        for [findEmote, numberFind] in findEmotes:
-                            if numberCheck==numberFind:
-                                finalEmotes.append([findEmote, checkEmote])
-                                break
+            for [numberCheck, checkEmote] in enumerate(checkEmotes):
+                for [findEmote, numberFind] in findEmotes:
+                    if numberCheck==numberFind:
+                        finalEmotes.append([findEmote, checkEmote])
+                        break
 
-                    checkEmotes = [*set(checkEmotes)]
+            checkEmotes = [*set(checkEmotes)]
 
-                    for finalEmote, finalText in finalEmotes:
-                        if finalEmote:
-                            test = re.compile(re.escape(finalText), re.IGNORECASE)
-                            result = test.sub(str(finalEmote), result)
+            for finalEmote, finalText in finalEmotes:
+                if finalEmote:
+                    test = re.compile(f'(?<!<|<a){finalText}', re.IGNORECASE)
+                    result = test.sub(str(finalEmote), result)
 
-                            # result = re.sub(
-                            #     "((?:(?!<:|<a:):)(?:(?!\w{1,64}:\d{17,18})\w{1,64})(?:(?!>):))", str(emote), result, 1
-                            # )
+            embeds = []
 
+            if ctx.reference:
+                embed = discord.Embed(
+                    description=f"**[Reply to:]({ctx.reference.jump_url})** {ctx.reference.resolved.content}",
+                    color=0x000000,
+                )
+                embed.set_author(
+                    name=ctx.reference.resolved.author.display_name,
+                    icon_url=ctx.reference.resolved.author.display_avatar,
+                )
+                embeds.append(embed)
 
-                    embeds = []
-
-                    if ctx.reference:
-                        embed = discord.Embed(
-                            description="**[Reply to:](" + ctx.reference.jump_url + ")** " + ctx.reference.resolved.content,
-                            color=0x000000,
-                        )
-                        embed.set_author(
-                            name=ctx.reference.resolved.author.display_name,
-                            icon_url=ctx.reference.resolved.author.display_avatar,
-                        )
-                        embeds.append(embed)
-
-                    if ctx.attachments:
-                        for attachment in ctx.attachments:
-                            embed = discord.Embed(
-                                description="📂 " + "[" + attachment.filename + "](" + attachment.proxy_url + ")",
-                                color=0x000000,
-                            )
-                            embed.set_image(url=attachment.proxy_url)
-                            embeds.append(embed)
-
-                    await botWebhook.send(
-                        str(result),
-                        username=ctx.author.display_name,
-                        avatar_url=ctx.author.display_avatar.url,
-                        allowed_mentions=discord.AllowedMentions(everyone=False, users=True, roles=False, replied_user=True),
-                        embeds=embeds,
+            if ctx.attachments:
+                for attachment in ctx.attachments:
+                    embed = discord.Embed(
+                        description="📂 " + "[" + attachment.filename + "](" + attachment.proxy_url + ")",
+                        color=0x000000,
                     )
+                    embed.set_image(url=attachment.proxy_url)
+                    embeds.append(embed)
 
-                    await ctx.delete()
+            await botWebhook.send(
+                str(result),
+                username=ctx.author.display_name,
+                avatar_url=ctx.author.display_avatar.url,
+                allowed_mentions=discord.AllowedMentions(everyone=False, users=False, roles=False, replied_user=False),
+                embeds=embeds,
+            )
+
+            await ctx.delete()
 
     # @commands.check()
     async def markovFunction(self, ctx: discord.Message):
-        if ctx.author.bot is False:
-            if "markov" in ctx.content.lower() and ctx.author.id != 988995123851456532:
-                if ctx.channel.id == 1066008114324844645:
-                    channel = await self.fetch_channel(1059283666217484338)
-                    await channel.send(
-                        content=ctx.content,
-                        allowed_mentions=discord.AllowedMentions(everyone=False, users=False, roles=False, replied_user=False)
-                    )
+        if ctx.author.bot is False and ("markov" in ctx.content.lower() and ctx.author.id != 988995123851456532) and ctx.channel.id == 1066008114324844645:
+            channel = await self.fetch_channel(1059283666217484338)
+            await channel.send(
+                content=ctx.content,
+                allowed_mentions=discord.AllowedMentions(everyone=False, users=False, roles=False, replied_user=False)
+            )
 
         if ctx.channel.id == 1059283666217484338 and ctx.author.id == 1058138354199318610:
             channel = await self.fetch_channel(1066008114324844645)
@@ -401,7 +397,7 @@ async def create_bingo_card(client: DiscordBot, user: discord.Member):
             xCount = 0
             yCount = yCount + 1
 
-        if not (xCount == 2 and yCount == 2):
+        if xCount != 2 or yCount != 2:
             text = textwrap.fill(text=line, width=10)
 
             bingoCard.text(
@@ -423,7 +419,11 @@ async def create_bingo_card(client: DiscordBot, user: discord.Member):
     basicBingo.save("./assets/images/bingoResult.png")
 
     file = discord.File("./assets/images/bingoResult.png", filename="bingoResult.png")
-    embed = discord.Embed(title=user.display_name + "'s bingo card", color=0x000000, timestamp=datetime.datetime.now())
+    embed = discord.Embed(
+        title=f"{user.display_name}'s bingo card",
+        color=0x000000,
+        timestamp=datetime.datetime.now(),
+    )
     embed.set_image(url="attachment://bingoResult.png")
     embed.set_author(name=user, icon_url=user.display_avatar.url)
     embed.set_footer(text="Bot made by Tuxsuper", icon_url=client.DEV.display_avatar.url)
@@ -431,15 +431,13 @@ async def create_bingo_card(client: DiscordBot, user: discord.Member):
     return file, embed
 
 
-async def onlineEvent(client: DiscordBot):
+async def bingo_onlineEvent(client: DiscordBot):
     user_settingsQuery = """SELECT user_id, autobingo_dm from user_settings"""
     user_settingsSelect = await connectDB(user_settingsQuery)
 
     for userArray in user_settingsSelect:
         if userArray[1] is True:
-            user = client.get_user(userArray[0])
-
-            if user:
+            if user := client.get_user(userArray[0]):
                 try:
                     file, embed = await create_bingo_card(client=client, user=user)
                     embed.description = (
@@ -450,7 +448,7 @@ async def onlineEvent(client: DiscordBot):
                     print("Couldn't send DM with bingo")
 
 
-async def offlineEvent():
+async def bingo_offlineEvent():
     cache_bingoQuery = """TRUNCATE TABLE cache_bingo"""
     await connectDB(cache_bingoQuery)
 
@@ -461,9 +459,7 @@ async def predictionEvent(client: DiscordBot, embed: discord.Embed):
 
     for userArray in user_settingsSelect:
         if userArray[1] is True:
-            user = client.get_user(userArray[0])
-
-            if user:
+            if user := client.get_user(userArray[0]):
                 try:
                     embed.description = embed.description[:embed.description.rfind('\n\n')]
                     embed.description = f'{embed.description}\n\n Use $bets opt-out to stop getting bets in DMs'
@@ -475,6 +471,6 @@ async def predictionEvent(client: DiscordBot, embed: discord.Embed):
 async def check_permissions(client: DiscordBot, ctx: commands.Context):
     if ctx.author.guild_permissions.kick_members or ctx.author.id == client.DEV.id:
         return True
-    else:
-        await embedMessage(client=client, ctx=ctx, description="You don't have permission to use this command")
-        return False
+
+    await embedMessage(client=client, ctx=ctx, description="You don't have permission to use this command")
+    return False

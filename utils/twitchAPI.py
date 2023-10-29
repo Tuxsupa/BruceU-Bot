@@ -20,7 +20,7 @@ from utils import default
 load_dotenv()
 
 
-class TwitchAPI(object):
+class TwitchAPI():
     def __init__(self, client: discord.Client, loop: asyncio.AbstractEventLoop):
         self.client: default.DiscordBot = client
         self.loop = loop
@@ -54,25 +54,16 @@ class TwitchAPI(object):
         self.user = await first(self.TWITCH.get_users(logins="forsen"))
         self.stream = await first(self.TWITCH.get_streams(user_id=[self.user.id]))
         self.channel = await self.TWITCH.get_channel_information(self.user.id)
-        self.discordChannel = await self.client.fetch_channel(1052307685414027264)
-        self.discordChannel_Logs = await self.client.fetch_channel(1044664235365502996)
+        self.discordChannel = await self.client.fetch_channel(1081602472516276294)
 
-        if self.stream is not None:
-            self.onlineCheck = True
-        else:
-            self.onlineCheck = False
-
+        self.isOnline = self.stream is not None
         self.title = self.channel[0].title
         self.game = self.channel[0].game_name
 
-        print(f"Online: {self.onlineCheck}")
+        print(f"Online: {self.isOnline}")
         print(f"Channel name: {self.user.display_name}")
         print(f"Channel title: {self.title}")
         print(f"Channel game: {self.game}")
-
-        await self.discordChannel_Logs.send(
-            content=f"Online: {self.onlineCheck}\nChannel name: {self.user.display_name}\nChannel title: {self.title}\nChannel game: {self.game}"
-        )
 
         event_sub = EventSub(os.environ["HOST"], os.environ["TWITCH_ID"], 8080, self.TWITCH)
         event_sub.wait_for_subscription_confirm = False
@@ -93,15 +84,13 @@ class TwitchAPI(object):
         await asyncio.sleep(5 * 60)
         if self.onlineEvent_checked is False:
             print("Changed title but didn't go online after 5 minutes")
-            await self.discordChannel_Logs.send(content="Changed title but didn't go online after 5 minutes")
 
-            self.onlineCheck = False
+            self.isOnline = False
 
-    async def isOnline(self, data: dict):
+    async def onlineCheck(self, data: dict):
         print("Online")
-        await self.discordChannel_Logs.send(content="Online")
 
-        self.onlineCheck = True
+        self.isOnline = True
         self.onlineEvent_checked = False
 
         embed = discord.Embed(
@@ -125,7 +114,7 @@ class TwitchAPI(object):
             text="Forsen just went live!\n\nhttps://www.twitch.tv/forsen", media_ids=[mediaID.media_id]
         )
 
-        await default.onlineEvent(client=self.client)
+        await default.bingo_onlineEvent(client=self.client)
 
         self.isIntro = True
 
@@ -133,11 +122,10 @@ class TwitchAPI(object):
 
     async def updateEvent(self, data: dict):
         print("Update")
-        await self.discordChannel_Logs.send(content="Update")
 
         GAME = await first(self.TWITCH.get_games(game_ids=[data["event"]["category_id"]]))
 
-        if self.onlineCheck:
+        if self.isOnline:
 
             async with aiohttp.ClientSession() as session:
                 resHLTB = await default.get_HLTB(game=data["event"]["category_name"], session=session)
@@ -180,7 +168,7 @@ class TwitchAPI(object):
                     gameTime = round(gameData["comp_main"] / 3600, 3)
                     if gameTime > 0:
                         embed.add_field(name="Main Story", value=f"{gameTime} hours", inline=True)
-                        twitterText = twitterText + f"Main Story:\n{gameTime}hours\n\n"
+                        twitterText = f"{twitterText}Main Story:\n{gameTime}hours\n\n"
 
                 if resIGDB:
                     resData = resIGDB[0]
@@ -195,9 +183,9 @@ class TwitchAPI(object):
                         for externalGamesData in resData["external_games"]:
                             if externalGamesData["category"] == 1:
                                 appID = externalGamesData["uid"]
-                                linkSteam = "https://steamdb.info/app/" + appID
+                                linkSteam = f"https://steamdb.info/app/{appID}"
 
-                                embed.add_field(name="Link", value="[SteamDB](" + linkSteam + ")", inline=True)
+                                embed.add_field(name="Link", value=f"[SteamDB]({linkSteam})", inline=True)
                                 break
 
                     COUNTRYCODES = ["se", "ar", "tr"]
@@ -231,10 +219,9 @@ class TwitchAPI(object):
                         embed.add_field(name="Prices ", value=originalPricesText, inline=True)
                         embed.add_field(name="Converted ", value=convertedPricesText, inline=True)
 
-                    else:
-                        if len(resHLTB) > 0 and len(resHLTB["data"]) > 0 and resHLTB["data"][0]["comp_main"] != 0:
-                            embed.add_field(name="\u200B", value="\u200B", inline=True)
-                            embed.add_field(name="\u200B", value="\u200B", inline=True)
+                    elif len(resHLTB) > 0 and len(resHLTB["data"]) > 0 and resHLTB["data"][0]["comp_main"] != 0:
+                        embed.add_field(name="\u200B", value="\u200B", inline=True)
+                        embed.add_field(name="\u200B", value="\u200B", inline=True)
 
                     if gameModes:
                         embed.add_field(name="Game Modes ", value=gameModes, inline=True)
@@ -243,33 +230,30 @@ class TwitchAPI(object):
 
                 await self.discordChannel.send(content="<@&1033103133959786556>", embed=embed)
 
-                twitterText = twitterText + "https://www.twitch.tv/forsen"
+                twitterText = f"{twitterText}https://www.twitch.tv/forsen"
 
                 await self.twitterAPI_v2.create_tweet(text=twitterText)
 
                 if self.game != data["event"]["category_name"]:
                     self.isIntro = False
         else:
-            await self.isOnline(data)
+            await self.onlineCheck(data)
 
         self.title = data["event"]["title"]
         self.game = data["event"]["category_name"]
 
     async def onlineEvent(self, data: dict):
         print("Online Event")
-        await self.discordChannel_Logs.send(content="Online Event")
 
-        if self.onlineCheck is False:
+        if self.isOnline is False:
             print("Went live without changing the title")
-            await self.isOnline(data)
+            await self.onlineCheck(data)
 
         self.onlineEvent_checked = True
 
     async def offlineEvent(self, data: dict):
         print("Offline")
-        await self.discordChannel_Logs.send(content="Offline")
-
-        self.onlineCheck = False
+        self.isOnline = False
 
         embed = discord.Embed(
             title=f'{data["event"]["broadcaster_user_name"]} just went offline... Now what...',
@@ -282,48 +266,48 @@ class TwitchAPI(object):
             url=f'https://twitch.tv/{data["event"]["broadcaster_user_login"]}',
         )
         # embed.set_image(url="https://cdn.discordapp.com/attachments/1002241010115559464/1025614839118307398/unknown.png")
-        embed.set_image(url="https://cdn.discordapp.com/attachments/988994875234082829/1061429150818242662/tenor_2.gif")
-        # embed.set_image(url="https://cdn.discordapp.com/attachments/988994875234082829/1088253119454003291/forsenSmug.webp")
+        # embed.set_image(url="https://cdn.discordapp.com/attachments/988994875234082829/1061429150818242662/tenor_2.gif")
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1002241010115559464/1167256446447132744/forsenSmug.webp")
         embed.set_footer(text="Bot made by Tuxsuper", icon_url=self.client.DEV.display_avatar.url)
 
         await self.discordChannel.send(embed=embed)
 
         # mediaID = self.twitterAPI_v1.media_upload("./assets/images/forsenDespair.png")
-        mediaID = self.twitterAPI_v1.media_upload("./assets/images/minecraft.gif")
-        # mediaID = self.twitterAPI_v1.media_upload("./assets/images/forsenSmug.webp")
+        # mediaID = self.twitterAPI_v1.media_upload("./assets/images/minecraft.gif")
+        mediaID = self.twitterAPI_v1.media_upload("./assets/images/forsenSmug.webp")
 
         await self.twitterAPI_v2.create_tweet(text="Forsen just went offline... Now what...", media_ids=[mediaID.media_id])
 
-        await default.offlineEvent()
+        await default.bingo_offlineEvent()
 
         self.isIntro = False
 
-    async def predictionEvent(self, data: dict):
-        print("Poll Event")
+    # async def predictionEvent(self, data: dict):
+    #     print("Poll Event")
 
-        print(data)
-        endsAt = dateutil.parser.parse(data["event"]["locks_at"])
-        startsAt = dateutil.parser.parse(data["event"]["started_at"])
-        predcitionTime = endsAt-startsAt
+    #     print(data)
+    #     endsAt = dateutil.parser.parse(data["event"]["locks_at"])
+    #     startsAt = dateutil.parser.parse(data["event"]["started_at"])
+    #     predcitionTime = endsAt-startsAt
 
-        embed = discord.Embed(
-            title=f'New Bet',
-            description=f'Title: {data["event"]["title"]}\n\nOutcome 1: {data["event"]["outcomes"][0]["title"]}\n\nOutcome 2: {data["event"]["outcomes"][1]["title"]}\n\nEnds in: {predcitionTime}\n\n Use $bets opt-in to get this message in DMs',
-            color=0x000000,
-            timestamp=datetime.datetime.now(),
-        )
-        embed.set_author(
-            name=data["event"]["broadcaster_user_name"],
-            icon_url=self.user.profile_image_url,
-            url=f'https://twitch.tv/{data["event"]["broadcaster_user_login"]}',
-        )
-        embed.set_footer(text="Bot made by Tuxsuper", icon_url=self.client.DEV.display_avatar.url)
+    #     embed = discord.Embed(
+    #         title='New Bet',
+    #         description=f'Title: {data["event"]["title"]}\n\nOutcome 1: {data["event"]["outcomes"][0]["title"]}\n\nOutcome 2: {data["event"]["outcomes"][1]["title"]}\n\nEnds in: {predcitionTime}\n\n Use $bets opt-in to get this message in DMs',
+    #         color=0x000000,
+    #         timestamp=datetime.datetime.now(),
+    #     )
+    #     embed.set_author(
+    #         name=data["event"]["broadcaster_user_name"],
+    #         icon_url=self.user.profile_image_url,
+    #         url=f'https://twitch.tv/{data["event"]["broadcaster_user_login"]}',
+    #     )
+    #     embed.set_footer(text="Bot made by Tuxsuper", icon_url=self.client.DEV.display_avatar.url)
 
-        # channel = await self.client.fetch_channel(1066008114324844645)
+    #     # channel = await self.client.fetch_channel(1066008114324844645)
 
-        await self.discordChannel.send(embed=embed)
+    #     await self.discordChannel.send(embed=embed)
 
-        await default.predictionEvent(client=self.client, embed=embed)
+    #     await default.predictionEvent(client=self.client, embed=embed)
 
     async def on_update(self, data: dict):
         self.loop.create_task(self.updateEvent(data))
@@ -334,5 +318,5 @@ class TwitchAPI(object):
     async def on_offline(self, data: dict):
         self.loop.create_task(self.offlineEvent(data))
 
-    async def on_prediction(self, data: dict):
-        self.loop.create_task(self.predictionEvent(data))
+    # async def on_prediction(self, data: dict):
+    #     self.loop.create_task(self.predictionEvent(data))

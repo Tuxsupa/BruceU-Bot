@@ -67,7 +67,7 @@ class Meme_Commands(commands.Cog):
             counter = 1
             for meme in discordSelect:
                 votes = len(meme[1]) - len(meme[2])
-                text = text + f"#{counter} {meme[0]} - ({votes}) votes\n"
+                text = f"{text}#{counter} {meme[0]} - ({votes}) votes\n"
                 counter = counter + 1
 
             embed.add_field(name="Top 10 Best", value=text, inline=True)
@@ -80,7 +80,7 @@ class Meme_Commands(commands.Cog):
             counter = 1
             for meme in discordSelect:
                 votes = len(meme[1]) - len(meme[2])
-                text = text + f"#{counter} {meme[0]} - ({votes}) votes\n"
+                text = f"{text}#{counter} {meme[0]} - ({votes}) votes\n"
                 counter = counter + 1
 
             embed.add_field(name="Top 10 Worst", value=text, inline=True)
@@ -91,41 +91,39 @@ class Meme_Commands(commands.Cog):
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction: commands.Context, user: discord.Member):
-        if user.bot is False:
-            if reaction.message.author.id == self.client.user.id:
-                if ") Meme '" in reaction.message.content:
-                    splitted = reaction.message.content.split(") Meme '", 1)[1]
-                    splitted = splitted.split("': ", 1)
-                    name = splitted[0]
-                    discordSelectQuery = """SELECT upvotes, downvotes FROM memes WHERE name = %s"""
-                    discordSelectInsert = (name,)
-                    discordSelect = await default.connectDB(discordSelectQuery, discordSelectInsert)
-
-                    if reaction.emoji == "⬆️":
-                        if user.id not in discordSelect[0][0]:
-                            if user.id in discordSelect[0][1]:
-                                discordUpdateQuery = (
-                                    """UPDATE memes SET downvotes = array_remove(downvotes, %s) WHERE name = %s"""
-                                )
-                                discordUpdateInsert = (user.id, name)
-                                await default.connectDB(discordUpdateQuery, discordUpdateInsert)
-
-                            discordUpdateQuery = """UPDATE memes SET upvotes = upvotes || %s WHERE name = %s"""
-                            discordUpdateInsert = (user.id, name)
-                            await default.connectDB(discordUpdateQuery, discordUpdateInsert)
-
-                    elif reaction.emoji == "⬇️":
-                        if user.id not in discordSelect[0][1]:
-                            if user.id in discordSelect[0][0]:
-                                discordUpdateQuery = (
-                                    """UPDATE memes SET upvotes = array_remove(upvotes, %s) WHERE name = %s"""
-                                )
-                                discordUpdateInsert = (user.id, name)
-                                await default.connectDB(discordUpdateQuery, discordUpdateInsert)
-
-                            discordUpdateQuery = """UPDATE memes SET downvotes = downvotes || %s WHERE name = %s"""
-                            discordUpdateInsert = (user.id, name)
-                            await default.connectDB(discordUpdateQuery, discordUpdateInsert)
+        if user.bot is not False:
+            return
+        if reaction.message.author.id == self.client.user.id and ") Meme '" in reaction.message.content:
+            splitted = reaction.message.content.split(") Meme '", 1)[1]
+            splitted = splitted.split("': ", 1)
+            name = splitted[0]
+            discordSelectInsert = (name,)
+            discordSelectQuery = """SELECT upvotes, downvotes FROM memes WHERE name = %s"""
+            discordSelect = await default.connectDB(discordSelectQuery, discordSelectInsert)
+        
+            if reaction.emoji == "⬆️":
+                if user.id not in discordSelect[0][0]:
+                    if user.id in discordSelect[0][1]:
+                        discordUpdateInsert = (user.id, name)
+                        discordUpdateQuery = """UPDATE memes SET downvotes = array_remove(downvotes, %s) WHERE name = %s"""
+                        await default.connectDB(discordUpdateQuery, discordUpdateInsert)
+        
+                    discordUpdateQuery = """UPDATE memes SET upvotes = upvotes || %s WHERE name = %s"""
+                    discordUpdateInsert = (user.id, name)
+                    await default.connectDB(discordUpdateQuery, discordUpdateInsert)
+        
+            elif reaction.emoji == "⬇️":
+                if user.id not in discordSelect[0][1]:
+                    if user.id in discordSelect[0][0]:
+                        discordUpdateQuery = (
+                            """UPDATE memes SET upvotes = array_remove(upvotes, %s) WHERE name = %s"""
+                        )
+                        discordUpdateInsert = (user.id, name)
+                        await default.connectDB(discordUpdateQuery, discordUpdateInsert)
+        
+                    discordUpdateInsert = (user.id, name)
+                    discordUpdateQuery = """UPDATE memes SET downvotes = downvotes || %s WHERE name = %s"""
+                    await default.connectDB(discordUpdateQuery, discordUpdateInsert)
 
 
 async def setup(client: default.DiscordBot):

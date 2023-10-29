@@ -1,6 +1,7 @@
 import random
 import datetime
 import time
+import os
 # import json
 # import asyncio
 
@@ -24,6 +25,12 @@ class Misc_Commands(commands.Cog):
         self.dndTime = datetime.datetime(2023, 4, 14, 0)
         # self.my_task.start()
 
+    @commands.hybrid_command(aliases=["s"], description="Stops the Bot")
+    async def shutdown(self, ctx: commands.Context):
+        if ctx.author.id == self.client.DEV.id:
+            #self.client.minecraft.
+            os._exit(1)
+
     @commands.hybrid_command(aliases=["h"], description="List of commands")
     async def help(self, ctx: commands.Context):
         embed = discord.Embed(title="Commands", description="", color=0x000000, timestamp=ctx.message.created_at)
@@ -34,9 +41,9 @@ class Misc_Commands(commands.Cog):
             if command.params and len(command.params):
                 for param in command.params:
                     if command.params[param].required is True:
-                        paramText = paramText + " [" + command.params[param].name + "]"
+                        paramText = f"{paramText} [{command.params[param].name}]"
                     else:
-                        paramText = paramText + " <" + command.params[param].name + ">"
+                        paramText = f"{paramText} <{command.params[param].name}>"
 
             embed.add_field(
                 name=ctx.prefix + command.name + paramText,
@@ -45,7 +52,11 @@ class Misc_Commands(commands.Cog):
             )
 
         embed.set_footer(text="Bot made by Tuxsuper", icon_url=self.client.DEV.display_avatar.url)
-        await ctx.send(embed=embed)
+
+        try:
+            await ctx.author.send(embed=embed)
+        except discord.Forbidden:
+            await default.embedMessage(client=self.client, ctx=ctx, description="I can't send DM to the user")
 
     @commands.hybrid_command(description="Rolls a chance")
     async def roll(self, ctx: commands.Context, *, message: str):
@@ -175,7 +186,7 @@ class Bingo_Command(commands.Cog):
                     client=self.client, ctx=ctx, description="You opted-in auto bingo card sent to your DM's"
                 )
                 return
-            elif choice.lower() == "opt-out":
+            if choice.lower() == "opt-out":
                 user_settingsQuery = """INSERT INTO user_settings (user_id, autobingo_dm) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET autobingo_dm=%s"""
                 user_settingsInsert = (ctx.author.id, False, False)
                 await default.connectDB(user_settingsQuery, user_settingsInsert)
@@ -185,41 +196,38 @@ class Bingo_Command(commands.Cog):
                 return
 
         if self.client.twitch.isIntro is True:
-            user = ctx.author
-            if ctx.message.mentions:
-                user = ctx.message.mentions[0]
-
+            user = ctx.message.mentions[0] if ctx.message.mentions else ctx.author
             file, embed = await default.create_bingo_card(client=self.client, user=user)
             embed.description = f"You can use {ctx.prefix}bingo opt-in to get automatic bingo cards"
             await ctx.send(file=file, embed=embed)
 
 
-class Bets_Command(commands.Cog):
-    def __init__(self, client: default.DiscordBot):
-        self.client = client
+# class Bets_Command(commands.Cog):
+#     def __init__(self, client: default.DiscordBot):
+#         self.client = client
 
-    @commands.hybrid_command(description="Opt-in or out of recieving notifications when streamer starts bets")
-    @app_commands.choices(
-        choice=[app_commands.Choice(name="Opt-In", value="opt-in"), app_commands.Choice(name="Opt-Out", value="opt-out")]
-    )
-    async def bets(self, ctx: commands.Context, choice: str):
-        if choice:
-            if choice.lower() == "opt-in":
-                user_settingsQuery = """INSERT INTO user_settings (user_id, bets_dm) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET bets_dm=%s"""
-                user_settingsInsert = (ctx.author.id, True, True)
-                await default.connectDB(user_settingsQuery, user_settingsInsert)
-                await default.embedMessage(
-                    client=self.client, ctx=ctx, description="You opted-in for bets sent to your DM's"
-                )
-                return
-            elif choice.lower() == "opt-out":
-                user_settingsQuery = """INSERT INTO user_settings (user_id, bets_dm) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET bets_dm=%s"""
-                user_settingsInsert = (ctx.author.id, False, False)
-                await default.connectDB(user_settingsQuery, user_settingsInsert)
-                await default.embedMessage(
-                    client=self.client, ctx=ctx, description="You opted-out for bets sent to your DM's"
-                )
-                return
+#     @commands.hybrid_command(description="Opt-in or out of recieving notifications when streamer starts bets")
+#     @app_commands.choices(
+#         choice=[app_commands.Choice(name="Opt-In", value="opt-in"), app_commands.Choice(name="Opt-Out", value="opt-out")]
+#     )
+#     async def bets(self, ctx: commands.Context, choice: str):
+#         if choice:
+#             if choice.lower() == "opt-in":
+#                 user_settingsQuery = """INSERT INTO user_settings (user_id, bets_dm) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET bets_dm=%s"""
+#                 user_settingsInsert = (ctx.author.id, True, True)
+#                 await default.connectDB(user_settingsQuery, user_settingsInsert)
+#                 await default.embedMessage(
+#                     client=self.client, ctx=ctx, description="You opted-in for bets sent to your DM's"
+#                 )
+#                 return
+#             if choice.lower() == "opt-out":
+#                 user_settingsQuery = """INSERT INTO user_settings (user_id, bets_dm) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET bets_dm=%s"""
+#                 user_settingsInsert = (ctx.author.id, False, False)
+#                 await default.connectDB(user_settingsQuery, user_settingsInsert)
+#                 await default.embedMessage(
+#                     client=self.client, ctx=ctx, description="You opted-out for bets sent to your DM's"
+#                 )
+#                 return
 
 class Game_Command(commands.Cog):
     def __init__(self, client: default.DiscordBot):
@@ -292,7 +300,7 @@ class Game_Command(commands.Cog):
                 if len(resHLTB) > 0 and len(resHLTB["data"]) > 0:
                     gameTime = round((resHLTB["data"][0]["comp_main"] / 3600), 3)
                     if gameTime != 0:
-                        embed.add_field(name="Main Story", value=str(gameTime) + " hours", inline=True)
+                        embed.add_field(name="Main Story", value=f"{str(gameTime)} hours", inline=True)
 
                 if resIGDB:
                     resData = resIGDB[0]
@@ -317,13 +325,9 @@ class Game_Command(commands.Cog):
                     if "external_games" in resData:
                         for i in resData["external_games"]:
                             if i["category"] == 1:
-                                for i in enumerate(countryCodes):
+                                for codes in countryCodes:
                                     resSteam = await session.get(
-                                        "https://store.steampowered.com/api/appdetails?appids="
-                                        + appID
-                                        + "&cc="
-                                        + countryCodes[i]
-                                        + "&filters=price_overview"
+                                        f"https://store.steampowered.com/api/appdetails?appids={appID}&cc={codes}&filters=price_overview"
                                     )
 
                                     resSteam = await resSteam.json()
@@ -337,7 +341,7 @@ class Game_Command(commands.Cog):
                                         originalPrices.append([priceOverview["currency"], priceOverview["final"] / 100])
                                         originalPricesText = originalPricesText + priceOverview["final_formatted"] + "\n"
 
-                                embed.add_field(name="Link ", value="[SteamDB](" + linkSteam + ")", inline=True)
+                                embed.add_field(name="Link ", value=f"[SteamDB]({linkSteam})", inline=True)
 
                                 break
 
@@ -354,10 +358,9 @@ class Game_Command(commands.Cog):
                         embed.add_field(name="Prices ", value=originalPricesText, inline=True)
                         embed.add_field(name="Converted ", value=convertedPricesText, inline=True)
 
-                    else:
-                        if len(resHLTB) > 0 and len(resHLTB["data"]) > 0 and resHLTB["data"][0]["comp_main"] != 0:
-                            embed.add_field(name="\u200B", value="\u200B", inline=True)
-                            embed.add_field(name="\u200B", value="\u200B", inline=True)
+                    elif len(resHLTB) > 0 and len(resHLTB["data"]) > 0 and resHLTB["data"][0]["comp_main"] != 0:
+                        embed.add_field(name="\u200B", value="\u200B", inline=True)
+                        embed.add_field(name="\u200B", value="\u200B", inline=True)
 
                     if gameModes:
                         embed.add_field(name="Game Modes ", value=gameModes, inline=True)
@@ -372,5 +375,5 @@ class Game_Command(commands.Cog):
 async def setup(client: default.DiscordBot):
     await client.add_cog(Misc_Commands(client))
     await client.add_cog(Bingo_Command(client))
-    await client.add_cog(Bets_Command(client))
+    #await client.add_cog(Bets_Command(client))
     await client.add_cog(Game_Command(client))
