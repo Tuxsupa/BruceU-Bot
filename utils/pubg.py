@@ -8,6 +8,7 @@ from collections import Counter
 from PIL import Image, ImageFont, ImageDraw
 from dotenv import load_dotenv
 
+import discord
 from discord.ext import commands
 from utils import default
 
@@ -235,14 +236,16 @@ class Report():
             values = (name,)
             self.pubg_name = await self.db.connect_db(query, values)
 
-            if not self.pubg_name: # Check if it exists in the stats table
-                query = """SELECT name FROM stats WHERE LOWER(name) LIKE LOWER($1)"""
-                values = (name,)
-                self.pubg_name = await self.db.connect_db(query, values)
+            query = """SELECT name FROM stats WHERE LOWER(name) LIKE LOWER($1)"""
+            values = (name,)
+            pubg_name = await self.db.connect_db(query, values)
+            
+            if not self.pubg_name and pubg_name:
+                self.pubg_name = pubg_name
 
-            if not self.pubg_name:
+            if not self.pubg_name or not pubg_name:
                 await self.client.embed_message(ctx, description=f"PUBG name {name} is not on the database use {ctx.prefix}add to add your PUBG name to the snipa list")
-                return
+                raise StopIteration
 
         else: # Is discord name | Might need to put it above the if?
             query = """SELECT pubg_name FROM discord_profiles WHERE id = $1"""
@@ -250,8 +253,8 @@ class Report():
             self.pubg_name = await self.db.connect_db(query, values)
             if not self.pubg_name:
                 await self.client.embed_message(ctx, description=f"PUBG name from {member} is not on the database use {ctx.prefix}add to add your PUBG name to the snipa list")
-                return
-            
+                raise StopIteration
+
     async def write_header(self):
         IMAGE_WIDTH = 2000
         
@@ -263,17 +266,26 @@ class Report():
             anchor="ma",
             align="center",
         )
-    
+
+    async def convert_to_array(self, data):
+        if isinstance(data, str):
+            return [data]
+        elif isinstance(data, list):
+            return data
+        else:
+            raise ValueError("Input must be a string or a list")
+
     async def write_kill_causes(self):
         query = """SELECT causer FROM kills WHERE LOWER(name) LIKE LOWER($1)"""
         values = (self.pubg_name,)
         causer = await self.db.connect_db(query, values)
+        causer = await self.convert_to_array(causer)
 
         try:
             self.counter = Counter([self.simple_cause[cause] for cause in causer])
         except Exception as e:
             print("Error in report: ", e)
-            return
+            raise StopIteration
         
         Y_START = 273
         xAxis = 200
@@ -372,13 +384,16 @@ class Report():
         BADGE_POSITION = (1563, 1113)
         self.report.paste(badge, BADGE_POSITION, badge)
         
-    async def generate_report(self, ctx, name, member):
-        await self.start_report()
-        await self.get_pubg_name(ctx, name, member)
-        await self.write_header()
-        await self.write_kill_causes()
-        await self.write_stats_data()
-        await self.write_badge()
+    async def generate_report(self, ctx: commands.Context, name, member):
+        try:
+            await self.start_report()
+            await self.get_pubg_name(ctx, name, member)
+            await self.write_header()
+            await self.write_kill_causes()
+            await self.write_stats_data()
+            await self.write_badge()
+        except StopIteration:
+            return
         
         return self.report
 
@@ -408,7 +423,7 @@ class Leaderboard():
 
             if not self.pubg_name:
                 await self.client.embed_message(ctx, description=f"PUBG name {self.value} is not on the database use {ctx.prefix}add to add your PUBG name to the snipa list")
-                return
+                raise StopIteration
 
         else:  # Discord, no name or Mention used
             query = """SELECT pubg_name FROM discord_profiles WHERE id = $1"""
@@ -417,7 +432,7 @@ class Leaderboard():
 
             if not self.pubg_name:
                 await self.client.embed_message(ctx, description=f"PUBG name from {self.value} is not on the database use {ctx.prefix}add to add your PUBG name to the snipa list")
-                return
+                raise StopIteration
 
         query = """SELECT name, ROW_NUMBER() OVER (ORDER BY ranking ASC, name) AS rows FROM stats"""
         ranking_order = await self.db.connect_db(query)
@@ -432,18 +447,13 @@ class Leaderboard():
         yAxis = 326
         ROW_HEIGHT = 116
         color = self.WHITE
+        
+        query = """WITH cte AS (SELECT name, DENSE_RANK() OVER(ORDER BY score DESC) ranking FROM stats) UPDATE stats SET ranking = cte.ranking FROM cte WHERE stats.name LIKE cte.name"""
+        await self.db.connect_db(query)
 
         query = """SELECT ranking, name, score, kills, deaths FROM stats ORDER BY ranking ASC, name LIMIT 10 OFFSET $1"""
         values = (self.offset,)
         ranked_stats = await self.db.connect_db(query, values)
-        
-        if ranked_stats and ranked_stats[0][0] == 0:
-            query = """WITH cte AS (SELECT name, DENSE_RANK() OVER(ORDER BY score DESC) ranking FROM stats) UPDATE stats SET ranking = cte.ranking FROM cte WHERE stats.name LIKE cte.name"""
-            await self.db.connect_db(query)
-
-            query = """SELECT ranking, name, score, kills, deaths FROM stats ORDER BY ranking ASC, name LIMIT 10 OFFSET $1"""
-            values = (self.offset,)
-            ranked_stats = await self.db.connect_db(query, values)
 
         for rank, name, score, kills, deaths in ranked_stats:
             if self.value and not self.value.isdigit():
@@ -457,27 +467,37 @@ class Leaderboard():
             
             yAxis += ROW_HEIGHT
         
-    async def generate_leaderboard(self, ctx, value):
+    async def generate_leaderboard(self, ctx: commands.Context, value):
         await self.start_leaderboard(value)
 
         member = await get_member(ctx, self.value)
 
-        if self.value and self.value.isdigit(): # Is a page number
-            if int(self.value) > 999:
-                await self.client.embed_message(ctx, description="Please type numbers less than 1000")
-                return
+        try:
+            if self.value:
+                if self.value.isdigit(): # Is a page number
+                    self.page = int(self.value)
+                    self.offset = (self.page-1)*self.PAGE_SIZE
 
-            self.page = int(self.value)
-            self.offset = (self.page-1)*self.PAGE_SIZE
+                else:
+                    await self.get_player_data(ctx, member)
+        except StopIteration:
+            return
 
-        if self.value and not self.value.isdigit():
-            await self.get_player_data(ctx, member)
+        query = """SELECT count(*) FROM stats"""
+        row_count = await self.db.connect_db(query)
+        max_page = math.ceil(row_count/self.PAGE_SIZE)
 
-        self.lb_draw.text((1751, 57), f"Page {self.page}", self.WHITE, font=self.counter_font)
+        if self.value and self.value.isdigit() and self.page > max_page:
+            await self.client.embed_message(ctx, description="Page number can't be higher than number of pages")
+            return
+
+        self.lb_draw.text((1935, 57), f"Page {self.page}/{max_page}", self.WHITE, font=self.counter_font, anchor="ra")
 
         await self.write_leaderboard()
 
-        return self.leaderboard
+        lb_path = "./assets/images/leaderboardResult.png"
+        self.leaderboard.save(lb_path)
+        await ctx.send(file=discord.File(lb_path))
 
 
 class Customboard():
@@ -540,7 +560,7 @@ class Customboard():
 
             if not self.pubg_name:
                 await self.client.embed_message(ctx, description=f"PUBG name {self.value} is not on the database use {ctx.prefix}add to add your PUBG name to the snipa list")
-                return
+                raise StopIteration
 
         else:
             query = """SELECT pubg_name FROM discord_profiles WHERE id = $1"""
@@ -549,7 +569,7 @@ class Customboard():
 
             if not self.pubg_name:
                 await self.client.embed_message(ctx, description=f"PUBG name from {self.value} is not on the database use {ctx.prefix}add to add your PUBG name to the snipa list")
-                return
+                raise StopIteration
 
 
         query = f"SELECT name, ROW_NUMBER() OVER (ORDER BY {self.ORDER_DICT[self.choice]} DESC, name) AS rows from stats"
@@ -567,8 +587,7 @@ class Customboard():
         xArray = [87, 221, 764, 1026, 1160, 1703]
         yAxis = Y_START
         color = self.WHITE
-        
-        self.cb_draw.text((1750, 57), f"Page {self.page}", color, font=self.counter_font)
+
         self.cb_draw.text((xArray[1], 210), "Username", color, font=self.counter_font)
         self.cb_draw.text((xArray[2], 210), f"{self.TITLE_DICT[self.choice]}", color, font=self.counter_font)
         self.cb_draw.text((xArray[4], 210), "Username", color, font=self.counter_font)
@@ -578,7 +597,6 @@ class Customboard():
         query = f"SELECT name, {self.SELECT_DICT[self.choice]}, DENSE_RANK() OVER(ORDER BY {self.ORDER_DICT[self.choice]} DESC) rank FROM stats {query_where} ORDER BY rank, name LIMIT $1 OFFSET $2"
         values = (self.PAGE_SIZE, self.offset)
         ordered_stats = await self.db.connect_db(query, values)
-
 
 
         for index, (name, choice_value, rank) in enumerate(ordered_stats):
@@ -599,7 +617,7 @@ class Customboard():
 
             yAxis += ROW_HEIGHT
 
-    async def generate_customboard(self, ctx, choice, value):
+    async def generate_customboard(self, ctx: commands.Context, choice, value):
         if not choice:
             await self.client.embed_message(ctx, description="Choose a value to show. Use help command or forward slash to check which ones exist")
             return
@@ -614,20 +632,33 @@ class Customboard():
 
         member = await get_member(ctx, self.value)
 
-        if self.value and self.value.isdigit(): # Is a page number
-            if int(self.value) > 999:
-                await self.client.embed_message(ctx, description="Please type numbers less than 1000")
-                return
+        try:
+            if self.value:
+                if self.value.isdigit(): # Is a page number
+                    self.page = int(self.value)
+                    self.offset = (self.page-1)*self.PAGE_SIZE
 
-            self.page = int(self.value)
-            self.offset = (self.page-1)*self.PAGE_SIZE
+                else:
+                    await self.get_player_data(ctx, member)
+        except StopIteration:
+            return
 
-        if self.value and not self.value.isdigit():
-            await self.get_player_data(ctx, member)
-        
+        query_where = "WHERE bounty > 0" if self.choice == "bounty" else ""
+        query = f"""SELECT count(*) FROM stats {query_where}"""
+        row_count = await self.db.connect_db(query)
+        max_page = math.ceil(row_count/self.PAGE_SIZE)
+
+        if self.value and self.value.isdigit() and self.page > max_page:
+            await self.client.embed_message(ctx, description="Page number can't be higher than number of pages")
+            return
+
+        self.cb_draw.text((1935, 57), f"Page {self.page}/{max_page}", self.WHITE, font=self.counter_font, anchor="ra")
+
         await self.write_customboard()
         
-        return self.customboard
+        cb_path = "./assets/images/customboardResult.png"
+        self.customboard.save(cb_path)
+        await ctx.send(file=discord.File(cb_path))
 
 
 class Scoretable():
@@ -650,9 +681,7 @@ class Scoretable():
         self.counter_font = ImageFont.truetype("./assets/fonts/MYRIADPRO-REGULAR.ttf", 50)
         self.st_draw = ImageDraw.Draw(self.scoretable)
 
-    async def write_customboard(self):
-        self.st_draw.text((1538, 57), f"Page {self.page}", self.WHITE, font=self.counter_font)
-
+    async def write_scoretable(self):
         Y_START = 326
         ROW_HEIGHT = 116
 
@@ -681,15 +710,11 @@ class Scoretable():
 
             yAxis += ROW_HEIGHT
 
-    async def generate_scoretable(self, ctx, value):        
+    async def generate_scoretable(self, ctx: commands.Context, value):        
         await self.start_scoretable(value)
 
         if self.value:
             if self.value.isdigit(): # Is a page number
-                if int(self.value) > 999:
-                    await self.client.embed_message(ctx, description="Please type numbers less than 1000")
-                    return
-
                 self.page = int(self.value)
             else:
                 position = next((index for index, item in enumerate(self.scoretable_json) if item.lower() == value.lower()), None)
@@ -702,9 +727,19 @@ class Scoretable():
 
             self.offset = (self.page-1)*self.PAGE_SIZE
 
-        await self.write_customboard()
+        max_page = math.ceil(len(self.scoretable_json)/self.PAGE_SIZE)
+
+        if self.value and self.value.isdigit() and self.page > max_page:
+            await self.client.embed_message(ctx, description="Page number can't be higher than number of pages")
+            return
+
+        self.st_draw.text((1725, 55), f"Page {self.page}/{max_page}", self.WHITE, font=self.counter_font, anchor="ra")
+
+        await self.write_scoretable()
         
-        return self.scoretable
+        st_path = "./assets/images/scoreTableResult.png"
+        self.scoretable.save(st_path)
+        await ctx.send(file=discord.File(st_path))
 
 
 async def get_member(ctx, name):

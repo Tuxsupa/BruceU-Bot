@@ -22,26 +22,25 @@ class Game():
 
     async def get_twitch_token(self):
         url = f'https://id.twitch.tv/oauth2/token?client_id={os.environ["TWITCH_ID"]}&client_secret={os.environ["TWITCH_SECRET"]}&grant_type=client_credentials'
-        response = await self.client.session.post(url)
-        response = await response.json()
+        response = await self.client.request_aio(url, method="POST")
         return response["access_token"]
 
     async def get_IGDB(self, game: str, where=""):
-        response = await self.client.session.post(
+        return await self.client.request_aio(
             "https://api.igdb.com/v4/games/",
             data=f'fields name,alternative_names,url,game_modes.name,external_games.*,cover.url,total_rating_count,first_release_date,release_dates.*; where name ~ "{game}" {where}; sort total_rating desc;',
             headers={
                 "Accept": "application/json",
                 "Client-ID": os.environ["TWITCH_ID"],
                 "Authorization": f"Bearer {self.TWITCH_TOKEN}",
-            })
-
-        return await response.json()
+            },
+            method="POST"
+        )
 
     async def get_HLTB(self, game: str, year=0):
         ua = UserAgent()
 
-        resHLTB = await self.client.session.post(
+        return await self.client.request_aio(
             "https://www.howlongtobeat.com/api/search",
             json={
                 "searchType": "games",
@@ -71,33 +70,27 @@ class Game():
                 "User-Agent": ua.random,
                 "referer": "https://howlongtobeat.com/",
             },
+            method="POST"
         )
-
-        return await resHLTB.json()
 
     async def get_steam_prices(self, appID, countryCode):
-        resSteam = await self.client.session.get(
-            f"https://store.steampowered.com/api/appdetails?appids={appID}&cc={countryCode}&filters=price_overview"
-        )
-
-        return await resSteam.json()
+        return await self.client.request_aio(f"https://store.steampowered.com/api/appdetails?appids={appID}&cc={countryCode}&filters=price_overview")
 
     async def get_steam_game(self, game):
         steam_data = self.steam.apps.search_games(game)
-        
         if not steam_data.get("apps"):
             return
 
-        resIGDB = await self.client.session.post(
+        return await self.client.request_aio(
             "https://api.igdb.com/v4/games/",
             data=f'fields name,url,game_modes.name,external_games.*,cover.url,total_rating_count,first_release_date,release_dates.*; where external_games.uid = "{steam_data["apps"][0]["id"]}";"',
             headers={
                 "Accept": "application/json",
                 "Client-ID": os.environ["TWITCH_ID"],
                 "Authorization": f"Bearer {self.TWITCH_TOKEN}",
-            })
-
-        return await resIGDB.json()
+            },
+            method="POST"
+        )
 
     async def get_igdb_with_hltb(self, hltb_data):
         if not hltb_data.get("data"):
@@ -128,9 +121,7 @@ class Game():
         original_prices_str = ""
 
         for codes in COUNTRY_CODES:
-            steam_prices = await self.client.session.get(
-                f"https://store.steampowered.com/api/appdetails?appids={app_id}&cc={codes}&filters=price_overview")
-            steam_prices = await steam_prices.json()
+            steam_prices = await self.client.request_aio(f"https://store.steampowered.com/api/appdetails?appids={app_id}&cc={codes}&filters=price_overview")
 
             if steam_prices.get(app_id) and steam_prices[app_id].get("data"):
                 price_overview = steam_prices[app_id]["data"]["price_overview"]
@@ -179,7 +170,7 @@ class Game():
         self.embed.add_field(name="Prices ", value=original_prices_str, inline=True)
         self.embed.add_field(name="Converted ", value=converted_prices_str, inline=True)
 
-    async def get_game_modes(self, data):
+    async def get_game_modes_igdb(self, data):
         if game_modes := "".join(f"{i['name']}\n" for i in data.get("game_modes", [])):
             self.embed.add_field(name="Game Modes ", value=game_modes, inline=True)
             return
@@ -187,3 +178,17 @@ class Game():
         # indent if no game modes AND has prices 
         if self.original_prices:
             self.embed.add_field(name="\u200B", value="\u200B", inline=True)
+
+    async def get_game_modes_steam(self, uid):
+        steam_data = self.steam.apps.get_app_details(uid, filters="categories")
+
+        if steam_data and steam_data[uid].get("data"):
+            ALLOWED_CATEGORIES = [2, 1, 49, 36, 47, 9, 38, 48, 27] # 37/39/24
+
+            if game_modes := "".join(
+                f"{value['description']}\n"
+                for value in steam_data[uid]["data"]["categories"]
+                if value["id"] in ALLOWED_CATEGORIES
+            ):
+                self.embed.add_field(name="Game Modes ", value=game_modes, inline=True)
+                return True

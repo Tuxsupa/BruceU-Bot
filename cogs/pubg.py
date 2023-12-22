@@ -116,7 +116,7 @@ class Pubg(commands.Cog):
         player_stat = await self.client.request_aio(SNIPA_URL, self.pubg.HEADER)
 
         if not player_stat or "errors" in player_stat:
-            await self.client.embed_message(ctx, description="Nickname doesn't exist in PUBG")
+            await self.client.embed_message(ctx, description="Nickname doesn't exist in PUBG. (Case Sensitive)")
             return
 
         query = """INSERT INTO discord_profiles (id, pubg_name) VALUES ($1,$2) ON CONFLICT (id) DO UPDATE SET pubg_name=$3"""
@@ -272,34 +272,19 @@ class Pubg(commands.Cog):
     @commands.hybrid_command(aliases=["lb"], description="Shows the Leaderboard")
     async def leaderboard(self, ctx: commands.Context, *, value=None):
         util = pubg.Leaderboard(self.client)
-
-        leaderboard = await util.generate_leaderboard(ctx, value)
-        
-        lb_path = "./assets/images/leaderboardResult.png"
-        leaderboard.save(lb_path)
-        await ctx.send(file=discord.File(lb_path))
+        await util.generate_leaderboard(ctx, value)
 
     @commands.hybrid_command(aliases=["cb"], description="Shows the Customboard")
     async def customboard(self, ctx: commands.Context, choice: typing.Literal[
         "kills", "deaths", "kd", "damage", "snipakills", "distance", "suicides", "matches", "bounty"], *, value=None
     ):            
         util = pubg.Customboard(self.client)
-
-        customboard = await util.generate_customboard(ctx, choice, value)
-        
-        cb_path = "./assets/images/customboardResult.png"
-        customboard.save(cb_path)
-        await ctx.send(file=discord.File(cb_path))
+        await util.generate_customboard(ctx, choice, value)
 
     @commands.hybrid_command(aliases=["st"], description="Shows the Scoretable")
     async def scoretable(self, ctx: commands.Context, *, value=None):
         util = pubg.Scoretable(self.client)
-
-        scoretable = await util.generate_scoretable(ctx, value)
-
-        st_path = "./assets/images/scoreTableResult.png"
-        scoretable.save(st_path)
-        await ctx.send(file=discord.File(st_path))
+        await util.generate_scoretable(ctx, value)
 
 
 async def setup(client: default.DiscordBot):

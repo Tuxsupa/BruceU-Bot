@@ -20,12 +20,6 @@ class Misc(commands.Cog):
         self.client = client
         self.description = "Multiple miscellaneous commands"
 
-    # @commands.check(checks.check_permissions)
-    # @commands.hybrid_command(aliases=["s"], description="Stops the bot. Owner only")
-    # async def shutdown(self, ctx: commands.Context):
-    #     if ctx.author.id == self.client.DEV.id:
-    #         os._exit(1)
-
     @commands.cooldown(1, 10, commands.BucketType.channel)
     @commands.hybrid_command(aliases=["h"], description="List of commands")
     async def help(self, ctx: commands.Context, option = None):
@@ -138,7 +132,7 @@ class Misc(commands.Cog):
 
             await util.add_embed_indentation(game_time, igdb_steam)
             await util.get_price_details(original_prices_str)
-            await util.get_game_modes(data)
+            await util.get_game_modes_igdb(data)
 
         util.embed.set_author(name=ctx.author, icon_url=ctx.author.display_avatar.url)
         util.embed.set_footer(text="Bot made by Tuxsuper", icon_url=self.client.DEV.display_avatar.url)

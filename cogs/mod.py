@@ -1,3 +1,7 @@
+import os
+import sys
+import asyncio
+
 import discord
 from discord.ext import commands
 
@@ -65,6 +69,22 @@ class Mod(commands.Cog):
         await self.db.connect_db(query, values)
 
         await self.client.embed_message(ctx, description=f"User {mention} unbanned from using command {command}")
+
+    # @commands.check(checks.check_permissions)
+    # @commands.hybrid_command(description="Stops the bot. Owner only")
+    # async def shutdown(self, ctx: commands.Context):
+    #     if ctx.author.id == self.client.DEV.id:
+    #         await ctx.bot.close()
+    #         await asyncio.sleep(1)  # Allow time for cleanup
+    #         loop = asyncio.get_event_loop()
+    #         loop.stop()
+    #         sys.exit(0)
+
+    # @commands.check(checks.check_permissions)
+    # @commands.hybrid_command(description="Reboots the bot. Owner only")
+    # async def reboot(self, ctx: commands.Context):
+    #     if ctx.author.id == self.client.DEV.id:
+    #         os.execv(sys.executable, ['python'] + sys.argv)
 
 
 async def setup(client: default.DiscordBot):

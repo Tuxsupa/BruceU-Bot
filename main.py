@@ -1,10 +1,10 @@
 import os
-# import logging
-import asyncio
-import discord
 import sys
-
+import asyncio
+import logging
 from dotenv import load_dotenv
+
+import discord
 
 from utils import default
 
@@ -12,12 +12,11 @@ def main():
 
     load_dotenv()
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
+    loop = asyncio.get_event_loop()
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
+    # discord.utils.setup_logging(level = logging.INFO, root=False)
 
     isTest = False
 
@@ -27,6 +26,7 @@ def main():
     )
 
     TOKEN = os.environ["BOT_TEST_TOKEN"] if isTest else os.environ["BOT_TOKEN"]
+    #loop.run_until_complete(client.start(TOKEN))
     loop.create_task(client.run(TOKEN))
     loop.run_forever()
 

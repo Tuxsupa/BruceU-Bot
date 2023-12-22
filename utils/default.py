@@ -35,7 +35,7 @@ class DiscordBot(Bot):
         await checks.setup(self)
         
         await self.db.create_db()
-        self.session = aiohttp.ClientSession()
+        self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(force_close=True))
 
         for file in os.listdir("cogs"):
             if file.endswith(".py"):
@@ -46,7 +46,7 @@ class DiscordBot(Bot):
         if not self.OER.is_running():
             self.OER.start()
 
-        if not self.update_pubg_stats.is_running():
+        if not self.isTest and not self.update_pubg_stats.is_running():
             self.update_pubg_stats.start()
 
         self.DEV = await self.fetch_user(os.environ["OWNER_ID"])
@@ -67,7 +67,7 @@ class DiscordBot(Bot):
 
     async def on_reaction_add(self, reaction: discord.Reaction, user: discord.Member):
         REACTION_CHANNEL = 1097639586458505336
-        channel = self.get_channel(REACTION_CHANNEL)
+        channel = (self.get_channel(REACTION_CHANNEL) or await self.fetch_channel(REACTION_CHANNEL))
         await channel.send(f"reaction: {reaction} | user: {user}")
 
     async def on_command_error(self, message, error):
@@ -86,14 +86,14 @@ class DiscordBot(Bot):
         MARKOV_CHANNEL = 1066008114324844645
 
         if not ctx.author.bot and ("markov" in ctx.content.lower() and ctx.author.id != BOT_ID) and ctx.channel.id == MARKOV_CHANNEL:
-            channel = self.get_channel(MARKOV_BOT_CHANNEL)
+            channel = (self.get_channel(MARKOV_BOT_CHANNEL) or await self.fetch_channel(MARKOV_BOT_CHANNEL))
             await channel.send(
                 content=ctx.content,
                 allowed_mentions=discord.AllowedMentions(everyone=False, users=False, roles=False, replied_user=False)
             )
 
         if ctx.channel.id == MARKOV_BOT_CHANNEL and ctx.author.id == MARKOV_ID:
-            channel = self.get_channel(MARKOV_CHANNEL)
+            channel = (self.get_channel(MARKOV_CHANNEL) or await self.fetch_channel(MARKOV_CHANNEL))
             await channel.send(
                 content=ctx.content,
                 allowed_mentions=discord.AllowedMentions(everyone=False, users=False, roles=False, replied_user=False)
@@ -107,17 +107,20 @@ class DiscordBot(Bot):
     @tasks.loop(hours=12)
     async def OER(self):
         print("OER Update")
-        
-        self.oer_rates = await self.session.get(
-            f"https://openexchangerates.org/api/latest.json?app_id={os.environ['OPEN_EXCHANGE_RATES_ID']}"
-        )
-        self.oer_rates = await self.oer_rates.json()
+
+        OER_URL = f"https://openexchangerates.org/api/latest.json?app_id={os.environ['OPEN_EXCHANGE_RATES_ID']}"
+        self.oer_rates = await self.request_aio(OER_URL)
 
     @tasks.loop(hours=24)
     async def update_pubg_stats(self):
         player_stat = await self.request_aio(self.pubg.FORSEN_URL, self.pubg.HEADER)
 
-        pubg_match_ids = player_stat["data"]["relationships"]["matches"]["data"]
+        pubg_match_ids = None
+        if player_stat and player_stat.get("data") and player_stat["data"].get("relationships") and player_stat["data"]["relationships"].get("matches"):
+            pubg_match_ids = player_stat["data"]["relationships"]["matches"]["data"]
+
+        if not pubg_match_ids:
+            return
 
         query = """SELECT match_id FROM kills"""
         db_match_ids:list = await self.db.connect_db(query)
@@ -136,16 +139,13 @@ class DiscordBot(Bot):
         embed.set_footer(text="Bot made by Tuxsuper", icon_url=self.DEV.display_avatar.url)
         await ctx.send(embed=embed)
 
-    async def request_aio(self, url: str = "", header=None, typeJson=None):
-        async with self.session.get(url, headers=header) as r:
+    async def request_aio(self, url: str = "", headers=None, data=None, json=None, method="GET"):
+        async with getattr(self.session, method.lower())(url, headers=headers, data=data, json=json) as r:
             if r.status == 200:
-                print("Successfully Connected!")
-                if typeJson is None:
-                    return await r.json()
-                elif typeJson == "content":
-                    return await r.read()
+                print(f"Successfull {method} request")
+                return await r.json()
             else:
-                print("Failed to Connect")
+                print(f"Failed to {method} request")
                 return
 
 
@@ -261,7 +261,8 @@ class WebhookEmotes():
             for emote in clean_emotes
         ]
 
-        if not discord_emotes:
+        # Return of none emotes are found
+        if not discord_emotes or all(emote is None for emote in discord_emotes):
             return
 
         # Substitue text of emote with discord emote in the string

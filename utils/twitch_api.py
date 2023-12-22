@@ -21,6 +21,9 @@ load_dotenv()
 
 
 class TwitchAPI():
+    GANGSTALKERS = "<@&1033103133959786556>"
+    SNIPA = "<@&829458674543099954>"
+
     def __init__(self, client: default.DiscordBot, loop: asyncio.AbstractEventLoop):
         self.client = client
         self.loop = loop
@@ -52,7 +55,7 @@ class TwitchAPI():
         self.channel = await self.TWITCH.get_channel_information(self.user.id)
 
         SNIPA_CHANNEL = 1081602472516276294
-        self.discord_channel = self.client.get_channel(SNIPA_CHANNEL)
+        self.discord_channel = (self.client.get_channel(SNIPA_CHANNEL) or await self.client.fetch_channel(SNIPA_CHANNEL))
 
         self.is_online = self.stream is not None
         self.title = self.channel[0].title
@@ -129,19 +132,29 @@ class TwitchAPI():
 
             twitter = f"{embed.title}\n\n{twitter_changed}{link}"
 
-            if game_data := game_data[0]:
+            if game_data and game_data[0]:
+                game_data = next((i_game_data for i_game_data in game_data for i in i_game_data.get("external_games", []) if i.get("category") == 14 and i.get("uid") == event.category_id), game_data[0])
                 igdb_steam = next((i for i in game_data.get("external_games", []) if i.get("category") == 1), None)
                 original_prices_str = await util.set_steam_data(igdb_steam)
 
                 await util.add_embed_indentation(game_time, igdb_steam)
                 await util.get_price_details(original_prices_str)
-                await util.get_game_modes(game_data)
+                
+                got_game_modes = False
+                if igdb_steam:
+                    got_game_modes = await util.get_game_modes_steam(igdb_steam["uid"])
 
-            GANGSTALKERS = "<@&1033103133959786556>"
+                if not got_game_modes:
+                    await util.get_game_modes_igdb(game_data)
+
+            pings = self.GANGSTALKERS
+            if game == "PUBG: BATTLEGROUNDS" and self.game != game:
+                pings += self.SNIPA
+
             embed.set_thumbnail(url=GAME.box_art_url.format(width=144, height=192))
             embed.set_author(name=user, icon_url=self.user.profile_image_url, url=link)
             embed.set_footer(text="Bot made by Tuxsuper", icon_url=self.client.DEV.display_avatar.url)
-            await self.discord_channel.send(content=GANGSTALKERS, embed=embed)
+            await self.discord_channel.send(content=pings, embed=embed)
 
             await self.twitterAPI_v2.create_tweet(text=twitter)
 
@@ -186,7 +199,6 @@ class TwitchAPI():
         await self.discord_channel.send(embed=embed)
 
         mediaID = self.twitterAPI_v1.media_upload("./assets/images/mrPresident.gif")
-
         await self.twitterAPI_v2.create_tweet(
             text=f"{user} just went live!\n\n{link}", media_ids=[mediaID.media_id]
         )
@@ -233,13 +245,13 @@ class TwitchAPI():
         await self.twitterAPI_v2.create_tweet(text="Forsen just went offline... Now what...", media_ids=[mediaID.media_id])
 
         await self.bingo.bingo_offline_event()
-        self.loop.create_task(self.pubg_offline)
+        self.loop.create_task(self.pubg_offline())
 
         self.is_intro = False
 
     # Only change back to 24 hours after 30 minutes
     async def pubg_offline(self):
-        await asyncio.sleep(30 * 60)
+        await asyncio.sleep(45 * 60)
         self.client.update_pubg_stats.change_interval(hours=24)
 
     async def on_update(self, data: ChannelUpdateEvent):
