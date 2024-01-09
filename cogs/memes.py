@@ -4,9 +4,10 @@ from discord.ext import commands
 from utils import default
 
 
-class Meme_Commands(commands.Cog):
+class MemeCommands(commands.Cog):
     def __init__(self, client: default.DiscordBot):
         self.client = client
+        self.db = client.db
 
     @commands.hybrid_command(description="Shows memes")
     async def lm(self, ctx: commands.Context, *, meme: str):
@@ -14,11 +15,11 @@ class Meme_Commands(commands.Cog):
             """SELECT name, content, upvotes, downvotes FROM memes WHERE name = LOWER(%s) AND name !~* 'the_'"""
         )
         discordSelectInsert = (meme,)
-        discordSelect = await default.connectDB(discordSelectQuery, discordSelectInsert)
+        discordSelect = await self.db.connectDB(discordSelectQuery, discordSelectInsert)
         if discordSelect and len(discordSelect) > 0:
             discordUpdateQuery = """UPDATE memes SET views[1] = memes.views[1]+%s WHERE name = %s"""
             discordUpdateInsert = (1, discordSelect[0][0])
-            await default.connectDB(discordUpdateQuery, discordUpdateInsert)
+            await self.db.connectDB(discordUpdateQuery, discordUpdateInsert)
 
             votes = len(discordSelect[0][2]) - len(discordSelect[0][3])
             text = f"({votes}) Meme '{discordSelect[0][0]}': {discordSelect[0][1]}"
@@ -32,11 +33,11 @@ class Meme_Commands(commands.Cog):
         discordSelectQuery = (
             """SELECT name, content, upvotes, downvotes FROM memes WHERE name !~* 'the_' ORDER BY random() LIMIT 1"""
         )
-        discordSelect = await default.connectDB(discordSelectQuery)
+        discordSelect = await self.db.connectDB(discordSelectQuery)
         if discordSelect and len(discordSelect) > 0:
             discordUpdateQuery = """UPDATE memes SET views[2] = memes.views[2]+%s WHERE name = %s"""
             discordUpdateInsert = (1, discordSelect[0][0])
-            await default.connectDB(discordUpdateQuery, discordUpdateInsert)
+            await self.db.connectDB(discordUpdateQuery, discordUpdateInsert)
 
             votes = len(discordSelect[0][2]) - len(discordSelect[0][3])
             text = f"({votes}) Meme '{discordSelect[0][0]}': {discordSelect[0][1]}"
@@ -60,7 +61,7 @@ class Meme_Commands(commands.Cog):
         )
 
         discordSelectQuery = """SELECT name, upvotes, downvotes FROM memes ORDER BY (array_length(upvotes, 1)-array_length(downvotes, 1)) DESC NULLS LAST LIMIT 10"""
-        discordSelect = await default.connectDB(discordSelectQuery)
+        discordSelect = await self.db.connectDB(discordSelectQuery)
 
         if discordSelect and len(discordSelect) > 0:
             text = ""
@@ -73,7 +74,7 @@ class Meme_Commands(commands.Cog):
             embed.add_field(name="Top 10 Best", value=text, inline=True)
 
         discordSelectQuery = """SELECT name, upvotes, downvotes FROM memes ORDER BY (array_length(upvotes, 1)-array_length(downvotes, 1)) ASC NULLS LAST LIMIT 10"""
-        discordSelect = await default.connectDB(discordSelectQuery)
+        discordSelect = await self.db.connectDB(discordSelectQuery)
 
         if discordSelect and len(discordSelect) > 0:
             text = ""
@@ -99,18 +100,18 @@ class Meme_Commands(commands.Cog):
             name = splitted[0]
             discordSelectInsert = (name,)
             discordSelectQuery = """SELECT upvotes, downvotes FROM memes WHERE name = %s"""
-            discordSelect = await default.connectDB(discordSelectQuery, discordSelectInsert)
+            discordSelect = await self.db.connectDB(discordSelectQuery, discordSelectInsert)
         
             if reaction.emoji == "⬆️":
                 if user.id not in discordSelect[0][0]:
                     if user.id in discordSelect[0][1]:
                         discordUpdateInsert = (user.id, name)
                         discordUpdateQuery = """UPDATE memes SET downvotes = array_remove(downvotes, %s) WHERE name = %s"""
-                        await default.connectDB(discordUpdateQuery, discordUpdateInsert)
+                        await self.db.connectDB(discordUpdateQuery, discordUpdateInsert)
         
                     discordUpdateQuery = """UPDATE memes SET upvotes = upvotes || %s WHERE name = %s"""
                     discordUpdateInsert = (user.id, name)
-                    await default.connectDB(discordUpdateQuery, discordUpdateInsert)
+                    await self.db.connectDB(discordUpdateQuery, discordUpdateInsert)
         
             elif reaction.emoji == "⬇️":
                 if user.id not in discordSelect[0][1]:
@@ -119,12 +120,12 @@ class Meme_Commands(commands.Cog):
                             """UPDATE memes SET upvotes = array_remove(upvotes, %s) WHERE name = %s"""
                         )
                         discordUpdateInsert = (user.id, name)
-                        await default.connectDB(discordUpdateQuery, discordUpdateInsert)
+                        await self.db.connectDB(discordUpdateQuery, discordUpdateInsert)
         
                     discordUpdateInsert = (user.id, name)
                     discordUpdateQuery = """UPDATE memes SET downvotes = downvotes || %s WHERE name = %s"""
-                    await default.connectDB(discordUpdateQuery, discordUpdateInsert)
+                    await self.db.connectDB(discordUpdateQuery, discordUpdateInsert)
 
 
 async def setup(client: default.DiscordBot):
-    await client.add_cog(Meme_Commands(client))
+    await client.add_cog(MemeCommands(client))

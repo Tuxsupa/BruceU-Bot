@@ -2,6 +2,7 @@ import os
 # import logging
 import asyncio
 import discord
+import sys
 
 from dotenv import load_dotenv
 
@@ -13,21 +14,14 @@ def main():
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-
-    # logger = logging.getLogger("discord")
-    # logger.setLevel(logging.DEBUG)
-    # handler = logging.FileHandler(filename="discord.log", encoding="utf-8", mode="w")
-    # handler.setFormatter(logging.Formatter("%(asctime)s:%(levelname)s:%(name)s: %(message)s"))
-    # logger.addHandler(handler)
-
-    # database = default.Database(loop=loop)
+    
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
     isTest = False
 
-
     intent = discord.Intents.all()
-
     client = default.DiscordBot(
         command_prefix="$", help_command=None, case_insensitive=True, intents=intent, loop=loop, isTest = isTest
     )

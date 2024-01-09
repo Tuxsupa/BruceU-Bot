@@ -1,379 +1,148 @@
 import random
-import datetime
 import time
-import os
-# import json
-# import asyncio
 
 import discord
-import aiohttp
-
 from discord.ext import commands
 from discord import app_commands
-
 from dotenv import load_dotenv
 
 from utils import default
+from utils.emotes import Emotes, EmotesView
+from utils.bingo import Bingo
+from utils.game import Game
+from utils.help import Help
 
 load_dotenv()
 
 
-class Misc_Commands(commands.Cog):
+class Misc(commands.Cog):
     def __init__(self, client: default.DiscordBot):
         self.client = client
+        self.description = "Multiple miscellaneous commands"
 
-        self.dndTime = datetime.datetime(2023, 4, 14, 0)
-        # self.my_task.start()
+    # @commands.check(checks.check_permissions)
+    # @commands.hybrid_command(aliases=["s"], description="Stops the bot. Owner only")
+    # async def shutdown(self, ctx: commands.Context):
+    #     if ctx.author.id == self.client.DEV.id:
+    #         os._exit(1)
 
-    @commands.hybrid_command(aliases=["s"], description="Stops the Bot")
-    async def shutdown(self, ctx: commands.Context):
-        if ctx.author.id == self.client.DEV.id:
-            #self.client.minecraft.
-            os._exit(1)
-
+    @commands.cooldown(1, 10, commands.BucketType.channel)
     @commands.hybrid_command(aliases=["h"], description="List of commands")
-    async def help(self, ctx: commands.Context):
-        embed = discord.Embed(title="Commands", description="", color=0x000000, timestamp=ctx.message.created_at)
-        embed.set_author(name=ctx.author, icon_url=ctx.author.display_avatar.url)
-        for command in self.client.commands:
-            paramText = ""
+    async def help(self, ctx: commands.Context, option = None):
+        await Help(self.client).main(ctx, option)
 
-            if command.params and len(command.params):
-                for param in command.params:
-                    if command.params[param].required is True:
-                        paramText = f"{paramText} [{command.params[param].name}]"
-                    else:
-                        paramText = f"{paramText} <{command.params[param].name}>"
-
-            embed.add_field(
-                name=ctx.prefix + command.name + paramText,
-                value=command.description,
-                inline=False,
-            )
-
-        embed.set_footer(text="Bot made by Tuxsuper", icon_url=self.client.DEV.display_avatar.url)
+    @commands.hybrid_command(description="List of emotes the bot has access to")
+    async def emotes(self, ctx: commands.Context):
+        util = Emotes()     
+        embed = await util.get_embed(ctx)
 
         try:
-            await ctx.author.send(embed=embed)
+            await ctx.author.send(embed=embed, view=EmotesView(ctx, util))
+            if ctx.guild:
+                await ctx.send(content="Check DM's...")
         except discord.Forbidden:
-            await default.embedMessage(client=self.client, ctx=ctx, description="I can't send DM to the user")
+            await ctx.send(content="Couldn't DM you (blocked/DM's closed)")
 
     @commands.hybrid_command(description="Rolls a chance")
     async def roll(self, ctx: commands.Context, *, message: str):
         roll = random.randint(0, 100)
 
-        await default.embedMessage(client=self.client, ctx=ctx, title="Roll", description=f"{roll}% chance of {message}")
+        await self.client.embed_message(ctx, title="Roll", description=f"{roll}% chance of {message}")
 
-    @commands.hybrid_command(description="Time left until Dark and Darker next playtest")
+    @commands.hybrid_command(description="Time left until Dark and Darker playtest")
     async def dnd(self, ctx: commands.Context):
-        text = None
-        timeLeft = self.dndTime - datetime.datetime.now()
-        if timeLeft.total_seconds() <= 0:
-            text = "DARK AND DARKER IS OUT <:MUGA:844690515966689291>"
-            # text = "Now what <:TrollDespair:867414306580856832>"
-        else:
-            days = divmod(timeLeft.total_seconds(), 86400)
-            hours = divmod(days[1], 3600)
-            minutes = divmod(hours[1], 60)
-            seconds = divmod(minutes[1], 1)
-            text = f"{int(days[0])} days {int(hours[0])} hours {int(minutes[0])} minutes {int(seconds[0])} seconds left until Dark and Darker"
-            # text = "DARK AND DARKER IS OUT <:MUGA:844690515966689291>"
+        # time_left = 0 # date - datetime.now()
 
-        if text is not None:
-            await default.embedMessage(
-                client=self.client, ctx=ctx, title="Time left until Dark and Darker", description=text
-            )
+        # if time_left <= 0:
+        #     text = "DARK AND DARKER IS OUT <:MUGA:844690515966689291>"
+        #     # text = "Now what <:TrollDespair:867414306580856832>"
+        # else:
+        #     days = time_left.day
+        #     hours = time_left.hour
+        #     minutes = time_left.minute
+        #     seconds = time_left.second
+        #     text = f"{days} days {hours} hours {minutes} minutes {seconds} seconds left until Dark and Darker"
 
-    @commands.hybrid_command(description="List of emotes the bot has access to")
-    async def emotes(self, ctx: commands.Context):
-        embed = discord.Embed(title="Emotes", description="", color=0x000000)
+        text = "DARK AND DARKER IS OUT <:MUGA:844690515966689291>"
+        await self.client.embed_message(ctx, title="Time left until Dark and Darker", description=text)
 
-        lenghtText = ""
-        for emote in self.client.emojis:
-            lenghtText = lenghtText + str(emote) + " `:" + emote.name + ":`\n"
+    # @commands.hybrid_command(description="Pings Foxhole Mugas. (Foxhole Admins only)")
+    # @commands.has_role(1117895934773313547) # 1117895934773313547
+    # async def foxhole(self, ctx: commands.Context, *, message: str):
+    #     FOXHOLE_ROLE = 1117904228418076732
+    #     await ctx.send(content=f"<@&{FOXHOLE_ROLE}>\n\n{message}",
+    #             allowed_mentions=discord.AllowedMentions(everyone=False, users=False, roles=[ctx.guild.get_role(FOXHOLE_ROLE)], replied_user=False))
 
-        emoteText_Array = []
-        while len(emoteText_Array) < 6:
-            emoteText = lenghtText[:1000]
-            emoteText = emoteText.rsplit("\n", 1)
-            emoteText_Array.append(emoteText[0])
+    #     await ctx.message.delete()
 
-            lenghtText = lenghtText.replace(emoteText[0] + "\n", "")
-
-        for emoteText in emoteText_Array:
-            embed.add_field(name="\u200b", value=emoteText)
-
-        try:
-            await ctx.author.send(embed=embed)
-        except discord.Forbidden:
-            await ctx.send(content="Couldn't DM you (blocked/DM's closed)")
-
-    @commands.hybrid_command(description="Pings Foxhole Mugas. Only Foxhole admins can use it")
-    @commands.has_role(1117895934773313547) # 1117895934773313547
-    async def foxhole(self, ctx: commands.Context, *, message: str):
-        await ctx.send(content=f"<@&1117904228418076732>\n\n{message}",
-                allowed_mentions=discord.AllowedMentions(everyone=False, users=False, roles=[ctx.guild.get_role(1117904228418076732)], replied_user=False))
-
-        await ctx.message.delete()
-
-
-    # @commands.command(description="Turns markov on/off")
-    # async def test(self, ctx: commands.Context):
-    #     jsonCommands = {}
-
-    #     print(self.client.commands)
-    #     for command in self.client.commands:
-    #         print(command)
-    #         jsonCommands.update({command.name: False})
-
-    #     print(jsonCommands)
-    #     jsonCommands=json.dumps(jsonCommands)
-    #     print(jsonCommands)
-
-    #     user_settingsQuery = """INSERT INTO user_settings (user_id, autobingo_dm) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET autobingo_dm=%s"""
-    #     user_settingsInsert = (ctx.author.id, True, True)
-    #     await default.connectDB(user_settingsQuery, user_settingsInsert)
-
-
-    # @tasks.loop(hours=1)
-    # async def my_task(self):
-    #     timeLeft = self.dndTime - datetime.datetime.now()
-    #     hours = round(timeLeft.total_seconds()/3600)
-
-    #     channel = await self.client.fetch_channel(1035515030445232188) #1035515030445232188
-    #     if hours>1:
-    #         await channel.send(f"{hours} HOURS LEFT UNTIL DARK AND DARKER <:MUGA:844690515966689291>")
-    #     elif hours==1:
-    #         await channel.send(f"{hours} HOUR LEFT UNTIL DARK AND DARKER <:MUGA:844690515966689291>")
-    #     else:
-    #         await channel.send(f"DARK AND DARKER IS OUUUUUUUUUUUUUUUT LET'S FUCKING GOOOOOOOOOOOO <:MUGA:844690515966689291>")
-    #         self.my_task.stop()
-
-
-    # @my_task.before_loop
-    # async def time_check(self):
-    #     await self.client.wait_until_ready()
-    #     now = datetime.datetime.now()
-    #     future = self.dndTime
-
-    #     timeLeft = future-now
-    #     if round(timeLeft.total_seconds()/3600) > 24:
-    #         delta = datetime.timedelta(days=1)
-    #         await asyncio.sleep(((future-delta) - now).seconds)
-    #     elif round(timeLeft.total_seconds()/3600) >= 0:
-    #         delta = datetime.timedelta(hours=1)
-    #         now = datetime.datetime.now()
-    #         next_hour = (now + delta).replace(microsecond=0, second=0, minute=0)
-    #         await asyncio.sleep((next_hour - now).seconds)
-    #     else:
-    #         self.my_task.cancel()
-
-class Bingo_Command(commands.Cog):
-    def __init__(self, client: default.DiscordBot):
-        self.client = client
-
-    @commands.hybrid_command(description="Random Bingo Card when forsen is doing reactions")
+    @commands.hybrid_command(description="Reaction bingo card")
     @app_commands.choices(
         choice=[app_commands.Choice(name="Opt-In", value="opt-in"), app_commands.Choice(name="Opt-Out", value="opt-out")]
     )
-    async def bingo(self, ctx: commands.Context, choice=None):
+    async def bingo(self, ctx: commands.Context, choice=""):
+        util = Bingo(self.client)
+        
         if choice:
-            if choice.lower() == "opt-in":
-                user_settingsQuery = """INSERT INTO user_settings (user_id, autobingo_dm) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET autobingo_dm=%s"""
-                user_settingsInsert = (ctx.author.id, True, True)
-                await default.connectDB(user_settingsQuery, user_settingsInsert)
-                await default.embedMessage(
-                    client=self.client, ctx=ctx, description="You opted-in auto bingo card sent to your DM's"
-                )
+            if choice.lower() not in ("opt-in", "opt-out"):
+                await self.client.embed_message(ctx, description="Don't use anything after or choose between opt-in or opt-out")
                 return
-            if choice.lower() == "opt-out":
-                user_settingsQuery = """INSERT INTO user_settings (user_id, autobingo_dm) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET autobingo_dm=%s"""
-                user_settingsInsert = (ctx.author.id, False, False)
-                await default.connectDB(user_settingsQuery, user_settingsInsert)
-                await default.embedMessage(
-                    client=self.client, ctx=ctx, description="You opted-out auto bingo card sent to your DM's"
-                )
-                return
+            
+            await util.auto_bingo_db(ctx, choice)
+            return
 
-        if self.client.twitch.isIntro is True:
-            user = ctx.message.mentions[0] if ctx.message.mentions else ctx.author
-            file, embed = await default.create_bingo_card(client=self.client, user=user)
-            embed.description = f"You can use {ctx.prefix}bingo opt-in to get automatic bingo cards"
-            await ctx.send(file=file, embed=embed)
+        if not self.client.twitch.is_intro:
+            await self.client.embed_message(ctx, description="Forsen is not in intro")
+            return
 
-
-# class Bets_Command(commands.Cog):
-#     def __init__(self, client: default.DiscordBot):
-#         self.client = client
-
-#     @commands.hybrid_command(description="Opt-in or out of recieving notifications when streamer starts bets")
-#     @app_commands.choices(
-#         choice=[app_commands.Choice(name="Opt-In", value="opt-in"), app_commands.Choice(name="Opt-Out", value="opt-out")]
-#     )
-#     async def bets(self, ctx: commands.Context, choice: str):
-#         if choice:
-#             if choice.lower() == "opt-in":
-#                 user_settingsQuery = """INSERT INTO user_settings (user_id, bets_dm) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET bets_dm=%s"""
-#                 user_settingsInsert = (ctx.author.id, True, True)
-#                 await default.connectDB(user_settingsQuery, user_settingsInsert)
-#                 await default.embedMessage(
-#                     client=self.client, ctx=ctx, description="You opted-in for bets sent to your DM's"
-#                 )
-#                 return
-#             if choice.lower() == "opt-out":
-#                 user_settingsQuery = """INSERT INTO user_settings (user_id, bets_dm) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET bets_dm=%s"""
-#                 user_settingsInsert = (ctx.author.id, False, False)
-#                 await default.connectDB(user_settingsQuery, user_settingsInsert)
-#                 await default.embedMessage(
-#                     client=self.client, ctx=ctx, description="You opted-out for bets sent to your DM's"
-#                 )
-#                 return
-
-class Game_Command(commands.Cog):
-    def __init__(self, client: default.DiscordBot):
-        self.client = client
+        user = ctx.message.mentions[0] if ctx.message.mentions else ctx.author
+        file, embed = await util.create_bingo_card(user)
+        embed.description = f"You can use {ctx.prefix}bingo opt-in to get automatic bingo cards"
+        await ctx.send(file=file, embed=embed)
 
     @commands.hybrid_command(aliases=["g"], description="Shows info about a game")
     async def game(self, ctx: commands.Context, *, game: str):
-        discordSelectQuery = """SELECT pubg_name, image, banned_commands from discord_profiles WHERE id = %s"""
-        discordSelectInsert = (ctx.author.id,)
-        discordSelect = await default.connectDB(discordSelectQuery, discordSelectInsert)
+        await ctx.defer()
 
-        if not discordSelect or discordSelect[0][2][2] is False:
-            await ctx.defer()
+        util = Game(self.client)
+        util.TWITCH_TOKEN = await util.get_twitch_token()
 
-            async with aiohttp.ClientSession() as session:
-                resIGDB = await default.get_IGDB(game, session)
+        hltb_data = await util.get_HLTB(game)
+        game_data = await util.get_igdb_with_hltb(hltb_data) or await util.get_steam_game(game) or await util.get_IGDB(game)
 
-                if resIGDB is not None and len(resIGDB) > 0:
-                    game = resIGDB[0]["name"]
+        if not game_data:
+            await self.client.embed_message(ctx, description="Game doesn't exist")
+            return
 
-                    if "first_release_date" in resIGDB[0]:
-                        year = time.localtime(int(resIGDB[0]["first_release_date"])).tm_year
+        data = game_data[0]
+        game = data["name"]
+        game_url = data["url"]
+        
+        util.embed = discord.Embed(title=game, description=None, color=0x000000, url=game_url, timestamp=ctx.message.created_at)
 
-                    resRAWG = await default.get_RAWG(game, session)
+        # Get HLTB data if empty
+        if not hltb_data and data.get("first_release_date"):
+            release_date = data["first_release_date"]
+            year = time.localtime(int(release_date)).tm_year
+            hltb_data = await util.get_HLTB(game, year)
 
-                    if "first_release_date" in resIGDB[0]:
-                        resHLTB = await default.get_HLTB(game, session, year)
-                    else:
-                        resHLTB = []
-                else:
-                    resRAWG = await default.get_RAWG(game, session)
+        # Set thumbnail
+        if cover := data.get("cover"):
+            image_url = str(cover["url"])
+            util.embed.set_thumbnail(url=f"https:{image_url.replace('t_thumb', 't_cover_big')}")
 
-                    if resRAWG is not None and len(resRAWG) > 0 and len(resRAWG["results"]):
-                        game = resRAWG["results"][0]["name"]
-                        year = resRAWG["results"][0]["released"].split("-", 1)[0]
+        game_time = await util.get_game_time(hltb_data)
 
-                        resIGDB = await default.get_IGDB(game, session, where=f"& release_dates.y = {year}")
+        if game_data:
+            igdb_steam = next((i for i in data.get("external_games", []) if i.get("category") == 1), None)
+            original_prices_str = await util.set_steam_data(igdb_steam)
 
-                        resHLTB = await default.get_HLTB(game, session, year)
-                    else:
-                        resHLTB = []
+            await util.add_embed_indentation(game_time, igdb_steam)
+            await util.get_price_details(original_prices_str)
+            await util.get_game_modes(data)
 
-                if resIGDB is not None and len(resIGDB) > 0:
-                    resType = "IGDB"
-                    game = resIGDB[0]["name"]
-                    url = resIGDB[0]["url"]
-                elif resRAWG is not None and len(resRAWG) > 0 and len(resRAWG["results"]):
-                    resType = "RAWG"
-                    game = resRAWG["results"][0]["name"]
-                    url = "https://rawg.io/games/" + resRAWG["results"][0]["slug"]
-                elif len(resHLTB) > 0 and len(resHLTB["data"]) > 0:
-                    resType = "HLTB"
-                    game = resHLTB["data"][0]["game_name"]
-                    if "game_web_link" in resHLTB["data"][0]:
-                        url = resHLTB["data"][0]["game_web_link"]
-                else:
-                    await default.embedMessage(client=self.client, ctx=ctx, description="Game doesn't exist")
-                    return
-
-                embed = discord.Embed(
-                    title=game, description=None, color=0x000000, url=url, timestamp=ctx.message.created_at
-                )
-                if resType == "IGDB" and "cover" in resIGDB[0]:
-                    url = str(resIGDB[0]["cover"]["url"])
-                    embed.set_thumbnail(url="https:" + url.replace("t_thumb", "t_cover_big"))
-                elif resType == "RAWG" and "background_image" in resRAWG["results"][0]:
-                    url = str(resRAWG["results"][0]["background_image"])
-                    embed.set_thumbnail(url=url)
-
-                if len(resHLTB) > 0 and len(resHLTB["data"]) > 0:
-                    gameTime = round((resHLTB["data"][0]["comp_main"] / 3600), 3)
-                    if gameTime != 0:
-                        embed.add_field(name="Main Story", value=f"{str(gameTime)} hours", inline=True)
-
-                if resIGDB:
-                    resData = resIGDB[0]
-                    gameModes = ""
-
-                    if "game_modes" in resData:
-                        for i in resData["game_modes"]:
-                            gameModes = gameModes + i["name"] + "\n"
-
-                    if "external_games" in resData:
-                        for i in resData["external_games"]:
-                            if i["category"] == 1:
-                                linkSteam = "https://steamdb.info/app/" + i["uid"]
-                                appID = i["uid"]
-                                break
-
-                    countryCodes = ["se", "ar", "tr"]
-                    originalPrices = []
-                    originalPricesText = ""
-                    convertedPricesText = ""
-
-                    if "external_games" in resData:
-                        for i in resData["external_games"]:
-                            if i["category"] == 1:
-                                for codes in countryCodes:
-                                    resSteam = await session.get(
-                                        f"https://store.steampowered.com/api/appdetails?appids={appID}&cc={codes}&filters=price_overview"
-                                    )
-
-                                    resSteam = await resSteam.json()
-
-                                    if (
-                                        len(resSteam[appID]) != 0
-                                        and "data" in resSteam[appID]
-                                        and len(resSteam[appID]["data"]) != 0
-                                    ):
-                                        priceOverview = resSteam[appID]["data"]["price_overview"]
-                                        originalPrices.append([priceOverview["currency"], priceOverview["final"] / 100])
-                                        originalPricesText = originalPricesText + priceOverview["final_formatted"] + "\n"
-
-                                embed.add_field(name="Link ", value=f"[SteamDB]({linkSteam})", inline=True)
-
-                                break
-
-                    if originalPrices:
-                        for i in originalPrices:
-                            amount = i[1] / default.hourlyOER.rates["rates"][i[0]]
-                            result = round(amount * default.hourlyOER.rates["rates"]["EUR"], 2)
-                            convertedPricesText = convertedPricesText + str(result) + "€\n"
-
-                        if len(resHLTB) == 0 or len(resHLTB["data"]) == 0 or resHLTB["data"][0]["comp_main"] == 0:
-                            embed.add_field(name="\u200B", value="\u200B", inline=True)
-
-                        embed.add_field(name="\u200B", value="\u200B", inline=True)
-                        embed.add_field(name="Prices ", value=originalPricesText, inline=True)
-                        embed.add_field(name="Converted ", value=convertedPricesText, inline=True)
-
-                    elif len(resHLTB) > 0 and len(resHLTB["data"]) > 0 and resHLTB["data"][0]["comp_main"] != 0:
-                        embed.add_field(name="\u200B", value="\u200B", inline=True)
-                        embed.add_field(name="\u200B", value="\u200B", inline=True)
-
-                    if gameModes:
-                        embed.add_field(name="Game Modes ", value=gameModes, inline=True)
-
-                embed.set_author(name=ctx.author, icon_url=ctx.author.display_avatar.url)
-                embed.set_footer(text="Bot made by Tuxsuper", icon_url=self.client.DEV.display_avatar.url)
-                await ctx.send(embed=embed)
-        else:
-            await default.embedMessage(client=self.client, ctx=ctx, description="You are banned from using the command game")
-
+        util.embed.set_author(name=ctx.author, icon_url=ctx.author.display_avatar.url)
+        util.embed.set_footer(text="Bot made by Tuxsuper", icon_url=self.client.DEV.display_avatar.url)
+        await ctx.send(embed=util.embed)
 
 async def setup(client: default.DiscordBot):
-    await client.add_cog(Misc_Commands(client))
-    await client.add_cog(Bingo_Command(client))
-    #await client.add_cog(Bets_Command(client))
-    await client.add_cog(Game_Command(client))
+    await client.add_cog(Misc(client))

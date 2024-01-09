@@ -1,22 +1,16 @@
 import os
-import textwrap
-import datetime
 import asyncio
-import psycopg
+
+import asyncpg
 import aiohttp
 import discord
 import regex as re
+from dotenv import load_dotenv
 
 from discord.ext.commands import Bot
 from discord.ext import commands, tasks
-
-from PIL import Image, ImageFont, ImageDraw
-from psycopg.types.json import Json
-from fake_useragent import UserAgent
-from dotenv import load_dotenv
-
-from utils import pubgData, twitchAPI
-from utils import twitchAPI_Test
+from utils import checks, emotes
+from utils.reposter import Reposter
 
 load_dotenv()
 
@@ -26,225 +20,124 @@ class DiscordBot(Bot):
         super().__init__(*args, **kwargs)
         self.prefix = prefix
         self.loop = loop
-        self.isTest = isTest
+        self.isTest = isTest        
+
+        from utils import twitch_api
+        self.twitch: twitch_api.TwitchAPI = None
+        
+        self.db = Database()
+        self.webhook_emotes = WebhookEmotes(self)
+        
+        from utils import pubg
+        self.pubg = pubg.PubgData(self)
 
     async def setup_hook(self):
+        await checks.setup(self)
+        
+        await self.db.create_db()
+        self.session = aiohttp.ClientSession()
+
         for file in os.listdir("cogs"):
             if file.endswith(".py"):
                 name = file[:-3]
-                if name not in ('memes', 'minecraft'):
+                if name not in ('memes'):
                     await self.load_extension(f"cogs.{name}")
 
-        if not hourlyOER.is_running():
-            hourlyOER.start()
+        if not self.OER.is_running():
+            self.OER.start()
 
-        if not updateEverything.is_running():
-            updateEverything.start()
+        if not self.update_pubg_stats.is_running():
+            self.update_pubg_stats.start()
 
         self.DEV = await self.fetch_user(os.environ["OWNER_ID"])
 
+        reposter = Reposter(self)
+        self.loop.create_task(reposter.start(os.environ["DISCORD_TOKEN"]))
+
         if self.isTest is False:
-            self.twitch = twitchAPI.TwitchAPI(client=self, loop=self.loop)
+            from utils import twitch_api
+            self.twitch = twitch_api.TwitchAPI(client=self, loop=self.loop)
         else:
-            self.twitch = twitchAPI_Test.TwitchAPI(client=self, loop=self.loop)
+            from utils import twitch_api_test
+            self.twitch = twitch_api_test.TwitchAPI(client=self, loop=self.loop)
 
         self.loop.create_task(self.twitch.main())
 
         await self.tree.sync()
 
-    async def on_message(self, ctx: discord.Message):
-        await self.emoteFunction(ctx=ctx)
-
-        await self.markovFunction(ctx=ctx)
-
-        await self.process_commands(ctx)
-
     async def on_reaction_add(self, reaction: discord.Reaction, user: discord.Member):
-        channel = await self.fetch_channel(1097639586458505336)
+        REACTION_CHANNEL = 1097639586458505336
+        channel = self.get_channel(REACTION_CHANNEL)
         await channel.send(f"reaction: {reaction} | user: {user}")
 
     async def on_command_error(self, message, error):
         print(error)
-        if isinstance(
-            error,
-            (
-                commands.MissingRole,
-                commands.BadArgument,
-                commands.MissingRequiredArgument,
-            ),
-        ):
-            await embedMessage(client=self, ctx=message, description=error)
+        if isinstance(error, (commands.MissingRole, commands.BadArgument, commands.MissingRequiredArgument)):
+            await self.embed_message(message, description=error)
         elif isinstance(error, commands.CommandInvokeError):
             error = error.original
             if isinstance(error, discord.errors.Forbidden):
-                await embedMessage(client=self, ctx=message, description=f"Error {error}")
+                await self.embed_message(message, description=f"Error {error}")
 
-    @commands.bot_has_permissions(manage_messages=True, manage_webhooks=True)
-    async def emoteFunction(self, ctx: discord.Message):
-        if ctx.author.bot is not False:
-            return
-        result = ctx.content
+    async def markov(self, ctx: discord.Message):
+        BOT_ID = 988995123851456532
+        MARKOV_ID = 1058138354199318610
+        MARKOV_BOT_CHANNEL = 1059283666217484338
+        MARKOV_CHANNEL = 1066008114324844645
 
-        checkEmotes = re.findall("((?:(?!<:|<a:):)(?:(?!\w{1,64}:\d{17,18})\w{1,64})(?:(?!>):))", result)
-        checkEmotes = [emote.lower() for emote in checkEmotes]
-
-        findEmotes = []
-
-        if checkEmotes:
-            findEmotes = [str(e.split(":")[1].replace(":", "")) for e in checkEmotes]
-
-        if findEmotes:
-            _findEmotes = []
-            for [existsNumber, textEmoji] in enumerate(findEmotes):
-                for emoji in self.emojis:
-                    if emoji.name.lower() == textEmoji.lower() and emoji not in [item[0] for item in _findEmotes]:
-                        _findEmotes.append([emoji, existsNumber])
-
-            findEmotes = _findEmotes
-
-        if findEmotes and any(i[0] is not None for i in findEmotes):
-            webhooks = await ctx.channel.webhooks()
-            if all(webhook.user.id != self.user.id for webhook in webhooks):
-                print("Created Webhooks")
-                await ctx.channel.create_webhook(name="BruceU-1")
-                await ctx.channel.create_webhook(name="BruceU-2")
-                webhooks = await ctx.channel.webhooks()
-
-            for webhook in webhooks:
-                if webhook.user.id == self.user.id:
-                    botWebhook = webhook
-                    break
-
-            finalEmotes = []
-
-            for [numberCheck, checkEmote] in enumerate(checkEmotes):
-                for [findEmote, numberFind] in findEmotes:
-                    if numberCheck==numberFind:
-                        finalEmotes.append([findEmote, checkEmote])
-                        break
-
-            checkEmotes = [*set(checkEmotes)]
-
-            for finalEmote, finalText in finalEmotes:
-                if finalEmote:
-                    test = re.compile(f'(?<!<|<a){finalText}', re.IGNORECASE)
-                    result = test.sub(str(finalEmote), result)
-
-            embeds = []
-
-            if ctx.reference:
-                embed = discord.Embed(
-                    description=f"**[Reply to:]({ctx.reference.jump_url})** {ctx.reference.resolved.content}",
-                    color=0x000000,
-                )
-                embed.set_author(
-                    name=ctx.reference.resolved.author.display_name,
-                    icon_url=ctx.reference.resolved.author.display_avatar,
-                )
-                embeds.append(embed)
-
-            if ctx.attachments:
-                for attachment in ctx.attachments:
-                    embed = discord.Embed(
-                        description="📂 " + "[" + attachment.filename + "](" + attachment.proxy_url + ")",
-                        color=0x000000,
-                    )
-                    embed.set_image(url=attachment.proxy_url)
-                    embeds.append(embed)
-
-            await botWebhook.send(
-                str(result),
-                username=ctx.author.display_name,
-                avatar_url=ctx.author.display_avatar.url,
-                allowed_mentions=discord.AllowedMentions(everyone=False, users=False, roles=False, replied_user=False),
-                embeds=embeds,
-            )
-
-            await ctx.delete()
-
-    # @commands.check()
-    async def markovFunction(self, ctx: discord.Message):
-        if ctx.author.bot is False and ("markov" in ctx.content.lower() and ctx.author.id != 988995123851456532) and ctx.channel.id == 1066008114324844645:
-            channel = await self.fetch_channel(1059283666217484338)
+        if not ctx.author.bot and ("markov" in ctx.content.lower() and ctx.author.id != BOT_ID) and ctx.channel.id == MARKOV_CHANNEL:
+            channel = self.get_channel(MARKOV_BOT_CHANNEL)
             await channel.send(
                 content=ctx.content,
                 allowed_mentions=discord.AllowedMentions(everyone=False, users=False, roles=False, replied_user=False)
             )
 
-        if ctx.channel.id == 1059283666217484338 and ctx.author.id == 1058138354199318610:
-            channel = await self.fetch_channel(1066008114324844645)
+        if ctx.channel.id == MARKOV_BOT_CHANNEL and ctx.author.id == MARKOV_ID:
+            channel = self.get_channel(MARKOV_CHANNEL)
             await channel.send(
                 content=ctx.content,
                 allowed_mentions=discord.AllowedMentions(everyone=False, users=False, roles=False, replied_user=False)
             )
 
+    async def on_message(self, ctx: discord.Message):
+        await self.webhook_emotes.start(ctx)
+        await self.markov(ctx)
+        await self.process_commands(ctx)
 
-async def embedMessage(client: DiscordBot, ctx: commands.Context, title: str = None, description: str = None):
-    embed = discord.Embed(title=title, description=description, color=0x000000, timestamp=ctx.message.created_at)
-    embed.set_author(name=ctx.author, icon_url=ctx.author.display_avatar.url)
-    embed.set_footer(text="Bot made by Tuxsuper", icon_url=client.DEV.display_avatar.url)
-    await ctx.send(embed=embed)
+    @tasks.loop(hours=12)
+    async def OER(self):
+        print("OER Update")
+        
+        self.oer_rates = await self.session.get(
+            f"https://openexchangerates.org/api/latest.json?app_id={os.environ['OPEN_EXCHANGE_RATES_ID']}"
+        )
+        self.oer_rates = await self.oer_rates.json()
 
+    @tasks.loop(hours=24)
+    async def update_pubg_stats(self):
+        player_stat = await self.request_aio(self.pubg.FORSEN_URL, self.pubg.HEADER)
 
-# print("HELLO!")
+        pubg_match_ids = player_stat["data"]["relationships"]["matches"]["data"]
 
+        query = """SELECT match_id FROM kills"""
+        db_match_ids:list = await self.db.connect_db(query)
 
-# class Database():
-#     def __init__(self, loop: asyncio.AbstractEventLoop):
-#         self.pool = loop.create_task(self.createDB())
+        print("Starting the PUBG data update")
+        for match in pubg_match_ids:
+            if match["id"] not in db_match_ids:
+                await self.pubg.process_telemetry_data(match["id"])
+                db_match_ids.append(match["id"])
 
-#     async def createDB(self):
-#         try:
-#             DATABASE_URL = os.environ["DATABASE_URL"]
-#             pool = await asyncpg.create_pool(dsn=DATABASE_URL)
-#             print("Connected to PostgreSQL")
-#             return pool
-#         except Exception as e:
-#             print(f"Failed to create connection to PostgreSQL: {e}")
+        print("Stopping the PUBG data update")
 
-#     async def connectDB(self, query, values=None):
-#         try:
-#             async with self.pool.acquire() as conn:
-#                 stmt = await conn.prepare(query)
-#                 if query.startswith("SELECT") or query.get_type() == "SELECT":
-#                     return await stmt.fetch(values)
-#                 else:
-#                     return await stmt.execute(values)
-#         except Exception as e:
-#             print(f"Failed to connect to PostgreSQL: {e}")
+    async def embed_message(self, ctx: commands.Context, title: str = None, description: str = None):
+        embed = discord.Embed(title=title, description=description, color=0x000000, timestamp=ctx.message.created_at)
+        embed.set_author(name=ctx.author, icon_url=ctx.author.display_avatar.url)
+        embed.set_footer(text="Bot made by Tuxsuper", icon_url=self.DEV.display_avatar.url)
+        await ctx.send(embed=embed)
 
-try:
-    DATABASE_URL = os.environ["DATABASE_URL"]
-    CONNECTION = psycopg.connect(DATABASE_URL, sslmode="require")
-    CURSOR = CONNECTION.cursor()
-    print("Connected to PostgreSQL")
-
-except (Exception, psycopg.Error) as error:
-    print(error)
-
-
-async def connectDB(query="", values=None, isSelect=False):
-    try:
-        print(query)
-
-        if values is not None:
-            CURSOR.execute(query, values)
-        else:
-            CURSOR.execute(query)
-
-        if query.startswith("SELECT") is False:
-            CONNECTION.commit()
-
-        if query.startswith("SELECT") is True or isSelect is True:
-            return CURSOR.fetchall()
-
-    except (Exception, psycopg.Error) as error:
-        print("Failed to select record from the table", error)
-
-
-async def requestAio(url: str = "", header=None, typeJson=None):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=header) as r:
+    async def request_aio(self, url: str = "", header=None, typeJson=None):
+        async with self.session.get(url, headers=header) as r:
             if r.status == 200:
                 print("Successfully Connected!")
                 if typeJson is None:
@@ -256,221 +149,143 @@ async def requestAio(url: str = "", header=None, typeJson=None):
                 return
 
 
-@tasks.loop(hours=1)
-async def hourlyOER():
-    print("Hourly Update")
-    async with aiohttp.ClientSession() as session:
-        hourlyOER.rates = await session.get(
-            f"https://openexchangerates.org/api/latest.json?app_id={os.environ['OPEN_EXCHANGE_RATES_ID']}"
-        )
-        hourlyOER.rates = await hourlyOER.rates.json()
+class Database():
+    def __init__(self):
+        self.pool: asyncpg.pool.Pool = None
 
+    async def create_db(self):
+        try:
+            self.pool = await asyncpg.create_pool(os.environ["CONNECTION_URL"])
+            print("Connected to PostgreSQL")
 
-@tasks.loop(minutes=3)
-async def updateEverything():
-    player_stat = await requestAio(pubgData.FORSEN_URL, pubgData.PUBG_HEADER)
+        except Exception as e:
+            print(f"Failed to create connection pool to PostgreSQL: {e}")
 
-    match_id_list = player_stat["data"][0]["relationships"]["matches"]["data"]
-
-    matchIDQuery = """SELECT match_id FROM kills"""
-    matchIDs = await connectDB(matchIDQuery)
-    matchIDs = [r[0] for r in matchIDs]
-
-    print("Starting updating")
-    for match in match_id_list:
-        if match["id"] not in matchIDs:
-            await pubgData.addRows(match["id"])
-            matchIDs.append(match["id"])
-
-    print("Stopping updating")
-
-
-async def get_IGDB(game: str, session: aiohttp.ClientSession, where=""):
-    resIGDB = await session.post(
-        f'https://id.twitch.tv/oauth2/token?client_id={os.environ["TWITCH_ID"]}&client_secret={os.environ["TWITCH_SECRET"]}&grant_type=client_credentials'
-    )
-
-    resIGDB = await resIGDB.json()
-
-    resIGDB = await session.post(
-        "https://api.igdb.com/v4/games/",
-        data=f'fields name,url,game_modes.name,external_games.*,cover.url,total_rating_count,first_release_date,release_dates.*; where name ~ "{game}" {where};"',
-        headers={
-            "Accept": "application/json",
-            "Client-ID": os.environ["TWITCH_ID"],
-            "Authorization": "Bearer " + resIGDB["access_token"],
-        },
-    )
-
-    return await resIGDB.json()
-
-
-async def get_RAWG(game: str, session: aiohttp.ClientSession):
-    resRAWG = await session.get(f'https://api.rawg.io/api/games?key={os.environ["RAWG_API_KEY"]}&search={game}')
-
-    return await resRAWG.json()
-
-
-async def get_HLTB(game: str, session: aiohttp.ClientSession, year=0):
-    ua = UserAgent()
-
-    resHLTB = await session.post(
-        "https://www.howlongtobeat.com/api/search",
-        json={
-            "searchType": "games",
-            "searchTerms": game.split(),
-            "searchPage": 1,
-            "size": 20,
-            "searchOptions": {
-                "games": {
-                    "userId": 0,
-                    "platform": "",
-                    "sortCategory": "popular",
-                    "rangeCategory": "main",
-                    "rangeTime": {"min": 0, "max": 0},
-                    "gameplay": {"perspective": "", "flow": "", "genre": ""},
-                    "rangeYear": {"min": year, "max": year},
-                    "modifier": "",
-                },
-                "users": {"sortCategory": "postcount"},
-                "filter": "",
-                "sort": 0,
-                "randomizer": 0,
-            },
-        },
-        headers={
-            "content-type": "application/json",
-            "accept": "*/*",
-            "User-Agent": ua.random,
-            "referer": "https://howlongtobeat.com/",
-        },
-    )
-
-    return await resHLTB.json()
-
-
-async def get_Steam(appID, countryCode, session):
-    resSteam = await session.get(
-        f"https://store.steampowered.com/api/appdetails?appids={appID}&cc={countryCode}&filters=price_overview"
-    )
-
-    return await resSteam.json()
-
-
-async def create_bingo_card(client: DiscordBot, user: discord.Member):
-    timeNow = datetime.date.today()
-    dayOfWeek = timeNow.isoweekday()
-
-    if dayOfWeek != 5:  # Not Friday
-        emote = Image.open("./assets/images/forsenJoy.png")
-    else:  # It's Friday
-        emote = Image.open("./assets/images/RebeccaBlack.png")
-
-    emote = emote.resize((200, 200))
-
-    bingoQuery = """SELECT lines from cache_bingo WHERE owner_id=%s"""
-    bingoInsert = (user.id,)
-    bingoSelect = await connectDB(bingoQuery, bingoInsert)
-
-    if bingoSelect:
-        bingoSelect = bingoSelect[0][0]
-    else:
-        bingoQuery = """SELECT line from bingo ORDER BY random() LIMIT 25"""
-        bingoSelect = await connectDB(bingoQuery)
-        bingoSelect = [r[0] for r in bingoSelect]
-
-        lineJson = {line: 0 for line in bingoSelect}
-
-        cache_bingoQuery = """INSERT INTO cache_bingo (owner_id, lines) VALUES (%s, %s)"""
-        cache_bingoInsert = (user.id, Json(lineJson))
-        await connectDB(cache_bingoQuery, cache_bingoInsert)
-
-    basicBingo = Image.open("./assets/images/bingo.png")
-    counter_font = ImageFont.truetype("./assets/fonts/MYRIADPRO-REGULAR.ttf", 50)
-    bingoCard = ImageDraw.Draw(basicBingo)
-
-    xCount = 0
-    yCount = 0
-
-    for line in bingoSelect:
-        if xCount > 4:
-            xCount = 0
-            yCount = yCount + 1
-
-        if xCount != 2 or yCount != 2:
-            text = textwrap.fill(text=line, width=10)
-
-            bingoCard.text(
-                (150 + (300 * xCount), 150 + (300 * yCount)),
-                f"{text}",
-                color=(255, 255, 255),
-                font=counter_font,
-                anchor="mm",
-                align="center",
-            )
-
-        xCount = xCount + 1
-
-    if emote.mode == "RGB":
-        basicBingo.paste(emote, (645, 645))
-    else:
-        basicBingo.paste(emote, (645, 645), emote)
-
-    basicBingo.save("./assets/images/bingoResult.png")
-
-    file = discord.File("./assets/images/bingoResult.png", filename="bingoResult.png")
-    embed = discord.Embed(
-        title=f"{user.display_name}'s bingo card",
-        color=0x000000,
-        timestamp=datetime.datetime.now(),
-    )
-    embed.set_image(url="attachment://bingoResult.png")
-    embed.set_author(name=user, icon_url=user.display_avatar.url)
-    embed.set_footer(text="Bot made by Tuxsuper", icon_url=client.DEV.display_avatar.url)
-
-    return file, embed
-
-
-async def bingo_onlineEvent(client: DiscordBot):
-    user_settingsQuery = """SELECT user_id, autobingo_dm from user_settings"""
-    user_settingsSelect = await connectDB(user_settingsQuery)
-
-    for userArray in user_settingsSelect:
-        if userArray[1] is True:
-            if user := client.get_user(userArray[0]):
+    async def connect_db(self, query="", values=None):
+        async with self.pool.acquire() as connection:
+            async with connection.transaction():
                 try:
-                    file, embed = await create_bingo_card(client=client, user=user)
-                    embed.description = (
-                        f"You can use {client.command_prefix}bingo opt-out to stop getting automatic bingo cards"
-                    )
-                    await user.send(file=file, embed=embed)
-                except discord.Forbidden:
-                    print("Couldn't send DM with bingo")
+                    print(query)
+                    if values:
+                        print(values)
+
+                    # Fetch Data
+                    if query.startswith("SELECT"):
+                        # Check if values used in query
+                        if values:                   
+                            rows = await self.pool.fetch(query, *values)
+                        else:
+                            rows = await self.pool.fetch(query)
+
+                        # Check if only one row returned
+                        if len(rows) == 1:
+                            return tuple(rows[0])[0] if len(rows[0]) == 1 else tuple(rows[0])
+
+                        # Check if all rows returned are one value 
+                        if all(len(row) == 1 for row in rows):
+                            return [tuple(row)[0] for row in rows]
+
+                        # Return normal tuple if none of the above
+                        return [tuple(row) for row in rows]
+
+                    # Insert/Update Data | Check if values used in query
+                    if values:
+                        await self.pool.execute(query, *values)
+                    else:
+                        await self.pool.execute(query)
+
+                except Exception as error:
+                    print("Failed to use database. Error: ", error)
 
 
-async def bingo_offlineEvent():
-    cache_bingoQuery = """TRUNCATE TABLE cache_bingo"""
-    await connectDB(cache_bingoQuery)
+class WebhookEmotes():
+    def __init__(self, client: DiscordBot):
+        self.client = client
 
+    async def get_webhook(self, ctx: discord.Message):
+        user = self.client.user
 
-async def predictionEvent(client: DiscordBot, embed: discord.Embed):
-    user_settingsQuery = """SELECT user_id, bets_dm from user_settings"""
-    user_settingsSelect = await connectDB(user_settingsQuery)
+        if isinstance(ctx.channel, discord.Thread):
+            channel = ctx.channel.parent
+        else:
+            channel = ctx.channel
 
-    for userArray in user_settingsSelect:
-        if userArray[1] is True:
-            if user := client.get_user(userArray[0]):
-                try:
-                    embed.description = embed.description[:embed.description.rfind('\n\n')]
-                    embed.description = f'{embed.description}\n\n Use $bets opt-out to stop getting bets in DMs'
-                    await user.send(embed=embed)
-                except discord.Forbidden:
-                    print("Couldn't send DM with bet")
+        try:
+            webhooks = await channel.webhooks()
+        except discord.Forbidden:
+            # await ctx.channel.send(content="Enable ""Manage Webhooks"" permission OR Turn off emote functionality")
+            return
 
+        if all(webhook.user.id != user.id for webhook in webhooks):
+            print("Created Webhooks")
+            await channel.create_webhook(name=f"{user.name}-1")
+            await channel.create_webhook(name=f"{user.name}-2")
+            webhooks = await channel.webhooks()
 
-async def check_permissions(client: DiscordBot, ctx: commands.Context):
-    if ctx.author.guild_permissions.kick_members or ctx.author.id == client.DEV.id:
-        return True
+        # Randomize between both?
+        return next((webhook for webhook in webhooks if webhook.user.id == user.id))
 
-    await embedMessage(client=client, ctx=ctx, description="You don't have permission to use this command")
-    return False
+    async def get_embeds(self, ctx: discord.Message):
+        embeds = []
+        if reference := ctx.reference:
+            embed = discord.Embed(description=f"**[Reply to:]({reference.jump_url})** {reference.resolved.content}", color=0x000000)
+            embed.set_author(name=reference.resolved.author.display_name, icon_url=reference.resolved.author.display_avatar)
+            embeds.append(embed)
+
+        if ctx.attachments:
+            for attachment in ctx.attachments:
+                embed = discord.Embed(description=f"📂 [{attachment.filename}]({attachment.proxy_url})", color=0x000000)
+                embed.set_image(url=attachment.proxy_url)
+                embeds.append(embed)
+        
+        return embeds
+
+    @commands.bot_has_permissions(manage_messages=True, manage_webhooks=True)
+    async def start(self, ctx: discord.Message):
+        if ctx.author.bot:
+            return
+
+        content = ctx.content
+
+        # Find emotes in string
+        emotes_array = re.findall("((?:(?!<:|<a:):)(?:(?!\w{1,64}:\d{17,18})\w{1,64})(?:(?!>):))", content)
+        clean_emotes = [emote.strip(":") for emote in emotes_array]
+
+        allowed_guilds = emotes.get_allowed_guilds(ctx.author, self.client)
+        allowed_emojis = [emoji for guild in allowed_guilds for emoji in guild.emojis]
+
+        # Find if bot has emotes and get them
+        discord_emotes = [
+            next((emoji for emoji in allowed_emojis if emoji.name == emote), None) or \
+            next((emoji for emoji in allowed_emojis if emoji.name.lower() == emote.lower()), None)
+            for emote in clean_emotes
+        ]
+
+        if not discord_emotes:
+            return
+
+        # Substitue text of emote with discord emote in the string
+        for emote_text, emote in zip(emotes_array, discord_emotes):
+            if emote:
+                substitute = re.compile(f'(?<!<|<a){emote_text}', re.IGNORECASE)
+                content = substitute.sub(str(emote), content, 1)
+
+        bot_webhook = await self.get_webhook(ctx)
+        if not bot_webhook:
+            return
+        
+        embeds = await self.get_embeds(ctx)
+
+        webhook_args = {
+            "content": str(content),
+            "username": ctx.author.display_name,
+            "avatar_url": ctx.author.display_avatar.url,
+            "allowed_mentions": discord.AllowedMentions(everyone=False, users=False, roles=False, replied_user=False),
+            "embeds": embeds,
+        }
+
+        if isinstance(ctx.channel, discord.Thread):
+            webhook_args["thread"] = ctx.channel
+
+        await bot_webhook.send(**webhook_args)
+        await ctx.delete()

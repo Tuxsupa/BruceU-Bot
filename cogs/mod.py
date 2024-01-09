@@ -1,97 +1,71 @@
 import discord
-
 from discord.ext import commands
-from discord import app_commands
+
+import utils.checks as checks
 from utils import default
 
 
-class Mod_Commands(commands.Cog):
+class Mod(commands.Cog):
     def __init__(self, client: default.DiscordBot):
         self.client = client
+        self.db = client.db
+        self.description = "Moderation commands"
 
-    async def getCommands(self):
-        allCommands = [
-            app_commands.Choice(name="All Commands", value="all"),
-            app_commands.Choice(name="Meme Commands", value="memes"),
-        ]
-
-        allCommands.extend(
-            app_commands.Choice(name=command.name, value=command.name)
-            for command in self.client.commands
-        )
-
+    # Needs to check if command is "admin only" or not | Needs a forward slash choice with all commands possible
+    @commands.check(checks.check_permissions)
     @commands.hybrid_command(description="Bans someone from using commands (Admin only)")
     async def ban(self, ctx: commands.Context, command, mention: discord.Member):
-        if not await default.check_permissions(self.client, ctx):
+        command = next((i for i in self.client.commands if i.name == command.lower() or command.lower() in i.aliases), None)
+
+        if not command:
+            await self.client.embed_message(ctx, description="Invalid command")
             return
-        if command is not None:
-            command = command.lower()
 
-        if command in ["image", "add", "game"]:
-            discordSelectQuery = """SELECT id, banned_commands from discord_profiles WHERE id = %s"""
-            discordSelectInsert = (mention.id,)
-            discordSelect = await default.connectDB(discordSelectQuery, discordSelectInsert)
-            if discordSelect:
-                bannedCommands = discordSelect[0][1]
-            else:
-                bannedCommands = [False, False, False]
+        if checks.check_permissions in command.checks:
+            await self.client.embed_message(ctx, description="I can't ban admin commands")
+            return
 
-            match command:
-                case "image":
-                    bannedCommands[0] = True
-                case "add":
-                    bannedCommands[1] = True
-                case "game":
-                    bannedCommands[2] = True
-            discordSelectQuery = """INSERT INTO discord_profiles (ID, BANNED_COMMANDS) VALUES (%s,%s) ON CONFLICT (ID) DO UPDATE SET banned_commands=%s"""
-            discordSelectInsert = (
-                mention.id,
-                bannedCommands,
-                bannedCommands,
-            )
-            await default.connectDB(discordSelectQuery, discordSelectInsert)
-            await default.embedMessage(
-                client=self.client,
-                ctx=ctx,
-                description=f"User {mention} banned from using command {command}",
-            )
-        else:
-            await default.embedMessage(client=self.client, ctx=ctx, description="Invalid command")
+        query = """SELECT 1 FROM command_bans WHERE command_name=$1 AND user_id=$2 AND guild_id=$3"""
+        values = (command.name, mention.id, ctx.guild.id)
+        is_banned = await self.db.connect_db(query, values)
 
+        if is_banned:
+            await self.client.embed_message(ctx, description=f"{mention} is already banned from using this command")
+            return
+
+        query = """INSERT INTO command_bans (command_name, user_id, guild_id) VALUES ($1,$2,$3)"""
+        values = (command.name, mention.id, ctx.guild.id)
+        await self.db.connect_db(query, values)
+        
+        await self.client.embed_message(ctx, description=f"User {mention} banned from using command {command}")
+
+    @commands.check(checks.check_permissions)
     @commands.hybrid_command(description="Unbans someone from using commands (Admin only)")
     async def unban(self, ctx: commands.Context, command, mention: discord.Member):
-        if not await default.check_permissions(self.client, ctx):
+        command = next((i for i in self.client.commands if i.name == command.lower() or command.lower() in i.aliases), None)
+
+        if not command:
+            await self.client.embed_message(ctx, description="Invalid command")
             return
-        if command is not None:
-            command = command.lower()
 
-        if command in ["image", "add", "game"]:
-            discordSelectQuery = """SELECT id, banned_commands from discord_profiles WHERE id = %s"""
-            discordSelectInsert = (mention.id,)
-            discordSelect = await default.connectDB(discordSelectQuery, discordSelectInsert)
-            if discordSelect:
-                bannedCommands = discordSelect[0][1]
-                match command:
-                    case "image":
-                        bannedCommands[0] = False
-                    case "add":
-                        bannedCommands[1] = False
-                    case "game":
-                        bannedCommands[2] = False
+        if checks.check_permissions in command.checks:
+            await self.client.embed_message(ctx, description="I can't unban admin commands")
+            return
 
-                discordSelectQuery = """UPDATE discord_profiles SET banned_commands = %s WHERE id = %s"""
-                discordSelectInsert = (bannedCommands, mention.id)
-                await default.connectDB(discordSelectQuery, discordSelectInsert)
-                await default.embedMessage(
-                    client=self.client,
-                    ctx=ctx,
-                    description=f"User {mention} unbanned from using command {command}",
-                )
-            else:
-                await default.embedMessage(client=self.client, ctx=ctx, description="User not found")
-        else:
-            await default.embedMessage(client=self.client, ctx=ctx, description="Invalid command")
+        query = """SELECT 1 FROM command_bans WHERE command_name=$1 AND user_id=$2 AND guild_id=$3"""
+        values = (command.name, mention.id, ctx.guild.id)
+        is_banned = await self.db.connect_db(query, values)
+
+        if not is_banned:
+            await self.client.embed_message(ctx, description=f"{mention} is not banned from using this command")
+            return
+
+        query = """DELETE FROM command_bans WHERE command_name=$1 AND user_id=$2 AND guild_id=$3"""
+        values = (command.name, mention.id, ctx.guild.id)
+        await self.db.connect_db(query, values)
+
+        await self.client.embed_message(ctx, description=f"User {mention} unbanned from using command {command}")
 
 
 async def setup(client: default.DiscordBot):
-    await client.add_cog(Mod_Commands(client))
+    await client.add_cog(Mod(client))
