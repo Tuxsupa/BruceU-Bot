@@ -4,6 +4,8 @@ import discord
 import textwrap
 from PIL import Image, ImageFont, ImageDraw
 
+import logging
+logger = logging.getLogger("discord")
 
 class Bingo():
     def __init__(self, client):
@@ -108,7 +110,7 @@ class Bingo():
                 try:
                     await user.send(file=file, embed=embed)
                 except discord.Forbidden:
-                    print("Couldn't send DM with bingo")
+                    logger.error("Couldn't send DM with bingo")
 
     async def bingo_offline_event(self):
         query = """TRUNCATE TABLE cache_bingo"""

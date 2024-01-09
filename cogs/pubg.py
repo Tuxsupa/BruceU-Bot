@@ -123,8 +123,8 @@ class Pubg(commands.Cog):
         values = (ctx.author.id, pubg_name, pubg_name)
         await self.db.connect_db(query, values)
 
-        query = """INSERT INTO stats (name, account_id) VALUES ($1,$2) ON CONFLICT (account_id) DO NOTHING"""
-        values = (pubg_name, player_stat["data"][0]["id"])
+        query = """INSERT INTO stats (name, account_id) VALUES ($1,$2) ON CONFLICT (account_id) DO UPDATE SET name=$3"""
+        values = (pubg_name, player_stat["data"][0]["id"], player_stat["data"][0]["attributes"]["name"])
         await self.db.connect_db(query, values)
 
         query = """WITH cte AS (SELECT name, DENSE_RANK() OVER(ORDER BY score DESC) ranking FROM stats) UPDATE stats SET ranking = cte.ranking FROM cte WHERE stats.name LIKE cte.name"""

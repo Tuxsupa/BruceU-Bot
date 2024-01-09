@@ -12,6 +12,9 @@ import discord
 from discord.ext import commands
 from utils import default
 
+import logging
+logger = logging.getLogger("discord")
+
 load_dotenv()
 
 class PubgData():
@@ -42,6 +45,27 @@ class PubgData():
         second_date = datetime.fromisoformat(second_date.replace("Z", "+00:00"))
 
         return (second_date - first_date).total_seconds()
+
+    async def check_values_json(self, event):
+        damage_info = event["finishDamageInfo"]
+
+        try:
+            self.DAMAGE_TYPE_CATEGORY[damage_info["damageTypeCategory"]]
+        except KeyError as e:
+            logger.error(f"{e} doesn't exist in DAMAGE_TYPE_CATEGORY")
+            raise KeyError from e
+
+        try:
+            causer = self.DAMAGE_CAUSER_NAME[damage_info["damageCauserName"]]
+        except KeyError as e:
+            logger.error(f"{e} doesn't exist in DAMAGE_CAUSER_NAME")
+            raise KeyError from e
+
+        try:
+            self.SCORE_TABLE[causer]
+        except KeyError as e:
+            logger.error(f"{e} doesn't exist in SCORE_TABLE")
+            raise KeyError from e
 
     async def process_target_kill(self, event, match_id):
         killer = None
@@ -158,6 +182,11 @@ class PubgData():
                 self.players_ids = {character["character"]["accountId"]: character["character"]["name"] for character in event["characters"]}
 
             if event["_T"] == "LogPlayerKillV2" and event["victim"]["accountId"] == self.FORSEN_ID:
+                try:
+                    await self.check_values_json(event)
+                except KeyError:
+                    return
+
                 await self.process_target_kill(event, matchID)
                 break
 
@@ -218,7 +247,7 @@ class Report():
     WHITE = (255, 255, 255)
 
     with open("./assets/dictionaries/simpleCause.json", "r", encoding="utf-8") as f:
-        simple_cause = json.loads(f.read())
+        SIMPLE_CAUSE = json.loads(f.read())
 
     def __init__(self, client: default.DiscordBot):
         self.client = client
@@ -282,9 +311,9 @@ class Report():
         causer = await self.convert_to_array(causer)
 
         try:
-            self.counter = Counter([self.simple_cause[cause] for cause in causer])
-        except Exception as e:
-            print("Error in report: ", e)
+            self.counter = Counter([self.SIMPLE_CAUSE[cause] for cause in causer])
+        except KeyError as e:
+            logger.error("Error in report: ", e)
             raise StopIteration
         
         Y_START = 273

@@ -17,6 +17,9 @@ from utils import default
 from utils.bingo import Bingo
 from utils.game import Game
 
+import logging
+logger = logging.getLogger("discord")
+
 load_dotenv()
 
 
@@ -61,10 +64,10 @@ class TwitchAPI():
         self.title = self.channel[0].title
         self.game = self.channel[0].game_name
 
-        print(f"Online: {self.is_online}")
-        print(f"Channel name: {self.user.display_name}")
-        print(f"Channel title: {self.title}")
-        print(f"Channel game: {self.game}")
+        logger.info(f"Online: {self.is_online}")
+        logger.info(f"Channel name: {self.user.display_name}")
+        logger.info(f"Channel title: {self.title}")
+        logger.info(f"Channel game: {self.game}")
         
         # Currently playing PUBG
         await self.check_pubg()
@@ -82,13 +85,15 @@ class TwitchAPI():
         
     async def check_pubg(self):
         if self.is_online and self.game == "PUBG: BATTLEGROUNDS":
+            logger.info("Changing PUBG updates to 5 minutes")
             self.client.update_pubg_stats.change_interval(minutes=5)
             return
         
+        logger.info("Changing PUBG updates to 24 hours")
         self.client.update_pubg_stats.change_interval(hours=24)
 
     async def update_event(self, data: ChannelUpdateEvent):
-        print("Update")
+        logger.info("Update")
 
         event = data.event
         title = event.title
@@ -169,16 +174,16 @@ class TwitchAPI():
         await self.check_pubg()
 
     async def online_event(self, data: StreamOnlineEvent):
-        print("Online Event")
+        logger.info("Online Event")
 
         if not self.is_online:
-            print("Went live without changing the title")
+            logger.info("Went live without changing the title")
             await self.went_online(data)
 
         self.is_actually_online = True
 
     async def went_online(self, data: Union[ChannelUpdateEvent, StreamOnlineEvent]):
-        print("Online")
+        logger.info("Online")
 
         event = data.event
         user = event.broadcaster_user_name
@@ -213,13 +218,13 @@ class TwitchAPI():
         await asyncio.sleep(5 * 60)
 
         if not self.is_actually_online:
-            print("Changed title but didn't go online after 5 minutes")
+            logger.info("Changed title but didn't go online after 5 minutes")
 
             self.is_online = False
             await self.check_pubg()
 
     async def offline_event(self, data: StreamOfflineEvent):
-        print("Offline")
+        logger.info("Offline")
         self.is_online = False
         event = data.event
 
@@ -252,7 +257,7 @@ class TwitchAPI():
     # Only change back to 24 hours after 30 minutes
     async def pubg_offline(self):
         await asyncio.sleep(45 * 60)
-        self.client.update_pubg_stats.change_interval(hours=24)
+        await self.check_pubg()
 
     async def on_update(self, data: ChannelUpdateEvent):
         self.loop.create_task(self.update_event(data))

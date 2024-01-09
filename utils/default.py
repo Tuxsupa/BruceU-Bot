@@ -1,22 +1,23 @@
 import os
 import asyncio
-
 import asyncpg
 import aiohttp
-import discord
 import regex as re
 from dotenv import load_dotenv
 
+import discord
 from discord.ext.commands import Bot
 from discord.ext import commands, tasks
 from utils import checks, emotes
 from utils.reposter import Reposter
 
+import logging
+logger = logging.getLogger("discord")
+
 load_dotenv()
 
-
 class DiscordBot(Bot):
-    def __init__(self, *args, prefix=None, loop: asyncio.AbstractEventLoop = None, isTest: bool = False, **kwargs):
+    def __init__(self, *args, prefix=None, loop: asyncio.AbstractEventLoop, isTest: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         self.prefix = prefix
         self.loop = loop
@@ -71,7 +72,7 @@ class DiscordBot(Bot):
         await channel.send(f"reaction: {reaction} | user: {user}")
 
     async def on_command_error(self, message, error):
-        print(error)
+        logger.error(error)
         if isinstance(error, (commands.MissingRole, commands.BadArgument, commands.MissingRequiredArgument)):
             await self.embed_message(message, description=error)
         elif isinstance(error, commands.CommandInvokeError):
@@ -106,7 +107,7 @@ class DiscordBot(Bot):
 
     @tasks.loop(hours=12)
     async def OER(self):
-        print("OER Update")
+        logger.info("OER Update")
 
         OER_URL = f"https://openexchangerates.org/api/latest.json?app_id={os.environ['OPEN_EXCHANGE_RATES_ID']}"
         self.oer_rates = await self.request_aio(OER_URL)
@@ -125,13 +126,13 @@ class DiscordBot(Bot):
         query = """SELECT match_id FROM kills"""
         db_match_ids:list = await self.db.connect_db(query)
 
-        print("Starting the PUBG data update")
+        logger.info("Starting the PUBG data update")
         for match in pubg_match_ids:
             if match["id"] not in db_match_ids:
                 await self.pubg.process_telemetry_data(match["id"])
                 db_match_ids.append(match["id"])
 
-        print("Stopping the PUBG data update")
+        logger.info("Stopping the PUBG data update")
 
     async def embed_message(self, ctx: commands.Context, title: str = None, description: str = None):
         embed = discord.Embed(title=title, description=description, color=0x000000, timestamp=ctx.message.created_at)
@@ -142,10 +143,10 @@ class DiscordBot(Bot):
     async def request_aio(self, url: str = "", headers=None, data=None, json=None, method="GET"):
         async with getattr(self.session, method.lower())(url, headers=headers, data=data, json=json) as r:
             if r.status == 200:
-                print(f"Successfull {method} request")
+                logger.info(f"Successfull {method} request")
                 return await r.json()
             else:
-                print(f"Failed to {method} request")
+                logger.error(f"Failed to {method} request")
                 return
 
 
@@ -156,10 +157,10 @@ class Database():
     async def create_db(self):
         try:
             self.pool = await asyncpg.create_pool(os.environ["CONNECTION_URL"])
-            print("Connected to PostgreSQL")
+            logger.info("Connected to PostgreSQL")
 
         except Exception as e:
-            print(f"Failed to create connection pool to PostgreSQL: {e}")
+            logger.error(f"Failed to create connection pool to PostgreSQL: {e}")
 
     async def connect_db(self, query="", values=None):
         async with self.pool.acquire() as connection:
@@ -195,7 +196,7 @@ class Database():
                         await self.pool.execute(query)
 
                 except Exception as error:
-                    print("Failed to use database. Error: ", error)
+                    logger.error("Failed to use database. Error: ", error)
 
 
 class WebhookEmotes():
@@ -217,7 +218,7 @@ class WebhookEmotes():
             return
 
         if all(webhook.user.id != user.id for webhook in webhooks):
-            print("Created Webhooks")
+            logger.info("Created Webhooks")
             await channel.create_webhook(name=f"{user.name}-1")
             await channel.create_webhook(name=f"{user.name}-2")
             webhooks = await channel.webhooks()

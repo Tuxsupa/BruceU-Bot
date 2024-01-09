@@ -1,12 +1,13 @@
 import os
 import sys
 import asyncio
-import logging
 from dotenv import load_dotenv
 
 import discord
-
 from utils import default
+
+import logging
+logger = logging.getLogger("discord")
 
 def main():
 
@@ -16,13 +17,13 @@ def main():
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-    # discord.utils.setup_logging(level = logging.INFO, root=False)
+    # discord.utils.setup_logging(level=logging.INFO, root=False)
 
     isTest = False
 
     intent = discord.Intents.all()
     client = default.DiscordBot(
-        command_prefix="$", help_command=None, case_insensitive=True, intents=intent, loop=loop, isTest = isTest
+        command_prefix="$", help_command=None, case_insensitive=True, intents=intent, loop=loop, isTest=isTest
     )
 
     TOKEN = os.environ["BOT_TEST_TOKEN"] if isTest else os.environ["BOT_TOKEN"]
