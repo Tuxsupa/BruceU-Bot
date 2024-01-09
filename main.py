@@ -1,10 +1,12 @@
-import discord
 import os
 import logging
 import asyncio
+import discord
+
+from dotenv import load_dotenv
 
 from utils import default
-from dotenv import load_dotenv
+
 
 
 load_dotenv()
@@ -18,6 +20,8 @@ handler = logging.FileHandler(filename="discord.log", encoding="utf-8", mode="w"
 handler.setFormatter(logging.Formatter("%(asctime)s:%(levelname)s:%(name)s: %(message)s"))
 logger.addHandler(handler)
 
+# database = default.Database(loop=loop)
+
 intent = discord.Intents.all()
 
 
@@ -26,8 +30,8 @@ client = default.DiscordBot(
 )
 
 
-# TOKEN = os.environ["BOT_TEST_TOKEN"]
 TOKEN = os.environ["BOT_TOKEN"]
+# TOKEN = os.environ["BOT_TEST_TOKEN"]
 
 
 loop.create_task(client.run(TOKEN))

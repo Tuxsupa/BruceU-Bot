@@ -1,15 +1,15 @@
 import discord
 
-from utils import default
 from discord.ext import commands
+from utils import default
 
 
 class Meme_Commands(commands.Cog):
-    def __init__(self, client):
+    def __init__(self, client: default.DiscordBot):
         self.client = client
 
     @commands.hybrid_command(description="Shows memes")
-    async def lm(self, ctx, *, meme):
+    async def lm(self, ctx: commands.Context, *, meme: str):
         discordSelectQuery = (
             """SELECT name, content, upvotes, downvotes FROM memes WHERE name = LOWER(%s) AND name !~* 'the_'"""
         )
@@ -28,7 +28,7 @@ class Meme_Commands(commands.Cog):
 
     @commands.hybrid_command(description="Shows random memes")
     @commands.cooldown(1, 10, commands.BucketType.channel)
-    async def rm(self, ctx):
+    async def rm(self, ctx: commands.Context):
         discordSelectQuery = (
             """SELECT name, content, upvotes, downvotes FROM memes WHERE name !~* 'the_' ORDER BY random() LIMIT 1"""
         )
@@ -45,7 +45,7 @@ class Meme_Commands(commands.Cog):
             await reaction.add_reaction("⬇️")
 
     @commands.command(description="Meme Leaderboard")
-    async def ml(self, ctx):
+    async def ml(self, ctx: commands.Context):
         # rankingQuery = sql.SQL("SELECT name, ROW_NUMBER() OVER (ORDER BY damage_dealt DESC, name) AS rows from stats")
 
         # discordSelectQuery = """SELECT name, views, upvotes, downvotes, id, created_at FROM memes WHERE name = LOWER(%s)"""
@@ -86,11 +86,11 @@ class Meme_Commands(commands.Cog):
             embed.add_field(name="Top 10 Worst", value=text, inline=True)
 
         embed.set_author(name=ctx.author, icon_url=ctx.author.display_avatar.url)
-        embed.set_footer(text="Bot made by Tuxsuper", icon_url=default.DEV.display_avatar.url)
+        embed.set_footer(text="Bot made by Tuxsuper", icon_url=self.client.DEV.display_avatar.url)
         await ctx.send(embed=embed)
 
     @commands.Cog.listener()
-    async def on_reaction_add(self, reaction, user):
+    async def on_reaction_add(self, reaction: commands.Context, user: discord.Member):
         if user.bot is False:
             if reaction.message.author.id == self.client.user.id:
                 if ") Meme '" in reaction.message.content:
@@ -128,5 +128,5 @@ class Meme_Commands(commands.Cog):
                             await default.connectDB(discordUpdateQuery, discordUpdateInsert)
 
 
-async def setup(client):
+async def setup(client: default.DiscordBot):
     await client.add_cog(Meme_Commands(client))

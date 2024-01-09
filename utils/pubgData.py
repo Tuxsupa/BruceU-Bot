@@ -1,9 +1,9 @@
 import os
 import json
 
-from utils import default
-from discord import app_commands
 from dotenv import load_dotenv
+
+from utils import default
 
 load_dotenv()
 
@@ -17,15 +17,15 @@ PUBG_HEADER = {
     "Accept-Enconding": "gzip",
 }
 
-with open("./assets/dictionaries/damageCauserName.json", "r") as f:
+with open("./assets/dictionaries/damageCauserName.json", "r", encoding="utf-8") as f:
     DAMAGE_CAUSER_NAME = json.loads(f.read())
 
-with open("./assets/dictionaries/damageTypeCategory.json", "r") as f:
+with open("./assets/dictionaries/damageTypeCategory.json", "r", encoding="utf-8") as f:
     DAMAGE_TYPE_CATEGORY = json.loads(f.read())
 
 
 async def addRows(matchID):
-    MATCH_URL = "https://api.pubg.com/shards/steam/matches/{}".format(matchID)
+    MATCH_URL = f"https://api.pubg.com/shards/steam/matches/{matchID}"
 
     MATCH_STAT = await default.requestAio(MATCH_URL, PUBG_HEADER)
 
@@ -91,7 +91,7 @@ async def addRows(matchID):
                     statsInsert = (killer, 1, 0, 0, 0, [0, 0, 0, 0, 0], 0, 0, 0, 0, 1)
                     await default.connectDB(statsQuery, statsInsert)
 
-                with open("./assets/dictionaries/scoreTable.json", "r") as f:
+                with open("./assets/dictionaries/scoreTable.json", "r", encoding="utf-8") as f:
                     scoreTable = json.loads(f.read())
 
                 score = scoreTable[causer]

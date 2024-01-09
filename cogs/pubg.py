@@ -1,106 +1,99 @@
-import discord
 import json
 import math
+import re
+from collections import Counter
+import discord
 import validators
 
 from PIL import Image, ImageFont, ImageDraw
-from collections import Counter
+
 from psycopg import sql
 
-from utils import default, pubgData
 from discord.ext import commands
 from discord import app_commands
+from utils import default, pubgData
 
 
 class PUBG_Commands(commands.Cog):
-    def __init__(self, client):
+    def __init__(self, client: default.DiscordBot):
         self.client = client
 
-    @commands.hybrid_command(aliases=["fi"], description="Force inserts an image to someones profile (Admin only)")
-    async def forceimage(self, ctx, mention, link):
-        if ctx.author.guild_permissions.kick_members or ctx.author.id == 270224083684163584:
-            if mention.startswith("<@") is True:
-                mention = mention.replace("<@", "")
-                mention = mention.replace(">", "")
-                member = await ctx.guild.fetch_member(mention)
-                if member is not None:
-                    if validators.url(link):
-                        discordQuery = """INSERT INTO discord_profiles (ID, IMAGE) VALUES (%s,%s) ON CONFLICT (ID) DO UPDATE SET IMAGE=%s"""
-                        discordInsert = (member.id, link, link)
-                        await default.connectDB(discordQuery, discordInsert)
-                        await  default.embedMessage(ctx, description="Image added for {}!".format(mention))
-                    else:
-                        await  default.embedMessage(ctx, description="No link present")
-                else:
-                    await  default.embedMessage(ctx, description="Mention member not found")
-            else:
-                await  default.embedMessage(ctx, description="Invalid Argument, please use mentions")
+    async def check_mention(self, ctx: commands.Context):
+        if ctx.message.mentions:
+            return True
         else:
-            await  default.embedMessage(ctx, description="You don't have permission to use this command")
+            await default.embedMessage(client=self.client, ctx=ctx, description="Invalid Argument, please use mentions")
+            return False
+
+    async def check_link(self, ctx: commands.Context, link: str):
+        if validators.url(link):
+            return True
+        else:
+            await default.embedMessage(client=self.client, ctx=ctx, description="No link present")
+            return False
+
+    @commands.hybrid_command(aliases=["fi"], description="Force inserts an image to someones profile (Admin only)")
+    async def forceimage(self, ctx: commands.Context, mention: discord.Member, link: str):
+        if await default.check_permissions(self.client, ctx):
+            if await self.check_link(ctx, link):
+                discordQuery = (
+                    """INSERT INTO discord_profiles (ID, IMAGE) VALUES (%s,%s) ON CONFLICT (ID) DO UPDATE SET IMAGE=%s"""
+                )
+                discordInsert = (mention.id, link, link)
+                await default.connectDB(discordQuery, discordInsert)
+                await default.embedMessage(client=self.client, ctx=ctx, description=f"Image added for {mention}!")
 
     @commands.hybrid_command(
         aliases=["fa"], description="Force create/replaces a PUBG and Discord name to someones profile (Admin only)"
     )
-    async def forceadd(self, ctx, mention, pubgname=None):
-        if ctx.author.guild_permissions.kick_members or ctx.author.id == 270224083684163584:
-            if mention.startswith("<@") is True:
-                mention = mention.replace("<@", "")
-                mention = mention.replace(">", "")
-                member = await ctx.guild.fetch_member(mention)
-                if member is not None:
-                    if pubgname is not None:
-                        SNIPA_URL = "https://api.pubg.com/shards/steam/players?filter[playerNames]={}".format(pubgname)
+    async def forceadd(self, ctx: commands.Context, mention: discord.Member, pubgname: str):
+        if await default.check_permissions(self.client, ctx):
+            SNIPA_URL = f"https://api.pubg.com/shards/steam/players?filter[playerNames]={pubgname}"
 
-                        player_stat = await default.requestAio(SNIPA_URL, pubgData.PUBG_HEADER)
+            player_stat = await default.requestAio(SNIPA_URL, pubgData.PUBG_HEADER)
 
-                        if "errors" in player_stat:
-                            await  default.embedMessage(ctx, description="Nickname doesn't exist in PUBG")
-                            return
-                        elif "data" in player_stat:
-                            discordInsertQuery = """INSERT INTO discord_profiles (ID, PUBG_NAME) VALUES (%s,%s) ON CONFLICT (ID) DO UPDATE SET PUBG_NAME=%s"""
-                            discordInsertValues = (member.id, pubgname, pubgname)
-                            await default.connectDB(discordInsertQuery, discordInsertValues)
+            if not player_stat or "errors" in player_stat:
+                await default.embedMessage(client=self.client, ctx=ctx, description="Nickname doesn't exist in PUBG")
+                return
+            elif "data" in player_stat:
+                discordInsertQuery = """INSERT INTO discord_profiles (ID, PUBG_NAME) VALUES (%s,%s) ON CONFLICT (ID) DO UPDATE SET PUBG_NAME=%s"""
+                discordInsertValues = (mention.id, pubgname, pubgname)
+                await default.connectDB(discordInsertQuery, discordInsertValues)
 
-                            statsInsertQuery = """INSERT INTO stats (NAME, KILLS, DEATHS, DAMAGE_DEALT, SNIPAS_KILLED, DISTANCE_TRAVELLED, SUICIDES, SCORE, RANKING, BOUNTY) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (NAME) DO NOTHING"""
-                            statsInsertValues = (pubgname, 0, 0, 0, 0, [0, 0, 0, 0, 0], 0, 0, 0, 0)
-                            await default.connectDB(statsInsertQuery, statsInsertValues)
+                statsInsertQuery = """INSERT INTO stats (NAME, KILLS, DEATHS, DAMAGE_DEALT, SNIPAS_KILLED, DISTANCE_TRAVELLED, SUICIDES, SCORE, RANKING, BOUNTY) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (NAME) DO NOTHING"""
+                statsInsertValues = (pubgname, 0, 0, 0, 0, [0, 0, 0, 0, 0], 0, 0, 0, 0)
+                await default.connectDB(statsInsertQuery, statsInsertValues)
 
-                            rankingQuery = """WITH cte AS (SELECT name, DENSE_RANK() OVER(ORDER BY score DESC) ranking FROM stats) UPDATE stats SET ranking = cte.ranking FROM cte WHERE stats.name LIKE cte.name"""
-                            await default.connectDB(rankingQuery)
+                rankingQuery = """WITH cte AS (SELECT name, DENSE_RANK() OVER(ORDER BY score DESC) ranking FROM stats) UPDATE stats SET ranking = cte.ranking FROM cte WHERE stats.name LIKE cte.name"""
+                await default.connectDB(rankingQuery)
 
-                            await default.embedMessage(
-                                self, ctx, description="PUBG name {} added to the snipa list".format(pubgname)
-                            )
-                        else:
-                            print("UNKNOWN")
-                            await  default.embedMessage(ctx, description="Uknown error idk kev KUKLE")
-                    else:
-                        await  default.embedMessage(ctx, description="No PUBG name mentioned")
-                else:
-                    await  default.embedMessage(ctx, description="Mention member not found")
+                await default.embedMessage(
+                    client=self.client, ctx=ctx, description=f"PUBG name {pubgname} added to the snipa list"
+                )
             else:
-                await  default.embedMessage(ctx, description="Invalid Argument, please use mentions")
-        else:
-            await  default.embedMessage(ctx, description="You don't have permission to use this command")
+                print("UNKNOWN")
+                await default.embedMessage(client=self.client, ctx=ctx, description="Unknown error idk kev KUKLE")
 
     @commands.hybrid_command(aliases=["b"], description="Adds or removes bounty to someone (Admin only)")
     @app_commands.choices(
         choice=[app_commands.Choice(name="Add", value="add"), app_commands.Choice(name="Remove", value="remove")]
     )
-    async def bounty(self, ctx, choice, value: int, name):
+    async def bounty(self, ctx: commands.Context, choice, value: int, name: str):
         checkChoices = ctx.command.app_command.parameters[0].choices
         listChoices = []
         for choices in checkChoices:
             listChoices.append(choices.value)
 
-        if ctx.author.guild_permissions.kick_members or ctx.author.id == 270224083684163584:
+        if await default.check_permissions(self.client, ctx):
             if choice in listChoices:
-                SNIPA_URL = "https://api.pubg.com/shards/steam/players?filter[playerNames]={}".format(name)
+                SNIPA_URL = f"https://api.pubg.com/shards/steam/players?filter[playerNames]={name}"
 
                 player_stat = await default.requestAio(SNIPA_URL, pubgData.PUBG_HEADER)
 
-                if "errors" in player_stat:
-                    await  default.embedMessage(ctx, description="Nickname {} doesn't exist in PUBG".format(name))
+                if not player_stat or "errors" in player_stat:
+                    await default.embedMessage(
+                        client=self.client, ctx=ctx, description=f"Nickname {name} doesn't exist in PUBG"
+                    )
                     return
                 elif "data" in player_stat:
                     if choice == "add":
@@ -122,7 +115,9 @@ class PUBG_Commands(commands.Cog):
 
                         rankingQuery = """WITH cte AS (SELECT name, DENSE_RANK() OVER(ORDER BY score DESC) ranking FROM stats) UPDATE stats SET ranking = cte.ranking FROM cte WHERE stats.name LIKE cte.name"""
                         await default.connectDB(rankingQuery)
-                        await  default.embedMessage(ctx, description="Bounty {} added to {}".format(value, name))
+                        await default.embedMessage(
+                            client=self.client, ctx=ctx, description=f"Bounty {value} added to {name}"
+                        )
                     elif choice == "remove":
                         statsQuery = """SELECT name FROM stats WHERE NAME LIKE %s"""
                         statsInsert = (name,)
@@ -132,69 +127,52 @@ class PUBG_Commands(commands.Cog):
                             statsInsert = (value, name)
                             await default.connectDB(statsQuery, statsInsert)
                             await default.embedMessage(
-                                self,
-                                ctx,
-                                "Bounty {} deducted from {}".format(value, name),
+                                client=self.client, ctx=ctx, description=f"Bounty {value} deducted from {name}"
                             )
                         else:
-                            await  default.embedMessage(ctx, description="Name not in database")
+                            await default.embedMessage(client=self.client, ctx=ctx, description="Name not in database")
                             return
             else:
-                await  default.embedMessage(ctx, description="Invalid command")
-        else:
-            await  default.embedMessage(ctx, description="You do not have permission to use this command")
+                await default.embedMessage(client=self.client, ctx=ctx, description="Invalid command")
 
     @commands.hybrid_command(description="Deletes image from someones profile (Admin only)")
     @app_commands.choices(
         choice=[app_commands.Choice(name="Image", value="image"), app_commands.Choice(name="PUBG Name", value="name")]
     )
-    async def delete(self, ctx, choice, name=None):
+    async def delete(self, ctx: commands.Context, choice, mention: discord.Member):
         checkChoices = ctx.command.app_command.parameters[0].choices
         listChoices = []
         for choices in checkChoices:
             listChoices.append(choices.value)
 
-        if ctx.author.guild_permissions.kick_members or ctx.author.id == 270224083684163584:
+        if await default.check_permissions(self.client, ctx):
             if choice in listChoices:
-                if name.startswith("<@") is True:
-                    name = name.replace("<@", "")
-                    name = name.replace(">", "")
-                    member = await ctx.guild.fetch_member(name)
-                    if member is not None:
-                        discordSelectQuery = """SELECT id from discord_profiles WHERE id = %s"""
-                        discordSelectInsert = (member.id,)
-                        discordSelect = await default.connectDB(discordSelectQuery, discordSelectInsert)
-                        if discordSelect:
-                            if choice == "image":
-                                discordSelectQuery = """UPDATE discord_profiles SET image = NULL WHERE id = %s"""
-                                discordSelectInsert = (member.id,)
-                                await default.connectDB(discordSelectQuery, discordSelectInsert)
-                                await default.embedMessage(
-                                    self, ctx, description="Image deleted from user {}".format(member)
-                                )
-                            else:
-                                discordSelectQuery = """UPDATE discord_profiles SET pubg_name = NULL WHERE id = %s"""
-                                discordSelectInsert = (member.id,)
-                                await default.connectDB(discordSelectQuery, discordSelectInsert)
-                                await default.embedMessage(
-                                    self,
-                                    ctx,
-                                    "PUBG name deleted from user {}".format(member),
-                                )
-                        else:
-                            await  default.embedMessage(ctx, description="User not found")
+                discordSelectQuery = """SELECT id from discord_profiles WHERE id = %s"""
+                discordSelectInsert = (mention.id,)
+                discordSelect = await default.connectDB(discordSelectQuery, discordSelectInsert)
+                if discordSelect:
+                    if choice == "image":
+                        discordSelectQuery = """UPDATE discord_profiles SET image = NULL WHERE id = %s"""
+                        discordSelectInsert = (mention.id,)
+                        await default.connectDB(discordSelectQuery, discordSelectInsert)
+                        await default.embedMessage(
+                            client=self.client, ctx=ctx, description=f"Image deleted from user {mention}"
+                        )
                     else:
-                        await  default.embedMessage(ctx, description="Mention member not found")
+                        discordSelectQuery = """UPDATE discord_profiles SET pubg_name = NULL WHERE id = %s"""
+                        discordSelectInsert = (mention.id,)
+                        await default.connectDB(discordSelectQuery, discordSelectInsert)
+                        await default.embedMessage(
+                            client=self.client, ctx=ctx, description=f"PUBG name deleted from user {mention}"
+                        )
                 else:
-                    await  default.embedMessage(ctx, description="Invalid Argument, please use mentions")
+                    await default.embedMessage(client=self.client, ctx=ctx, description="User not found in database")
             else:
-                await  default.embedMessage(ctx, description="Invalid command")
-        else:
-            await  default.embedMessage(ctx, description="You do not have permission to use this command")
+                await default.embedMessage(client=self.client, ctx=ctx, description="Invalid command")
 
     @commands.hybrid_command(aliases=["i"], description="Adds your PUBG character to your profile")
-    async def image(self, ctx, link):
-        if validators.url(link):
+    async def image(self, ctx: commands.Context, link: str):
+        if await self.check_link(ctx, link):
             discordSelectQuery = """SELECT pubg_name, image, banned_commands from discord_profiles WHERE id = %s"""
             discordSelectInsert = (ctx.author.id,)
             discordSelect = await default.connectDB(discordSelectQuery, discordSelectInsert)
@@ -204,24 +182,22 @@ class PUBG_Commands(commands.Cog):
                 discordInsert = (ctx.author.id, link, "", link)
                 await default.connectDB(discordQuery, discordInsert)
                 if discordSelect[1] is None:
-                    await  default.embedMessage(ctx, description="Image added!")
+                    await default.embedMessage(client=self.client, ctx=ctx, description="Image added!")
                 else:
-                    await  default.embedMessage(ctx, description="Image replaced!")
+                    await default.embedMessage(client=self.client, ctx=ctx, description="Image replaced!")
             else:
-                await  default.embedMessage(ctx, description="You are banned from adding images")
-        else:
-            await  default.embedMessage(ctx, description="No link present")
+                await default.embedMessage(client=self.client, ctx=ctx, description="You are banned from adding images")
 
     @commands.hybrid_command(
-        aliases=["a"], description="Adds your name to the snipa list and add/replace PUBG name in profile"
+        aliases=["a"], description="Adds your name to the snipa list or add/replace PUBG name in profile"
     )
-    async def add(self, ctx, pubgname):
-        SNIPA_URL = "https://api.pubg.com/shards/steam/players?filter[playerNames]={}".format(pubgname)
+    async def add(self, ctx: commands.Context, pubgname: str):
+        SNIPA_URL = f"https://api.pubg.com/shards/steam/players?filter[playerNames]={pubgname}"
 
         player_stat = await default.requestAio(SNIPA_URL, pubgData.PUBG_HEADER)
 
-        if "errors" in player_stat:
-            await  default.embedMessage(ctx, description="Nickname doesn't exist in PUBG")
+        if not player_stat or "errors" in player_stat:
+            await default.embedMessage(client=self.client, ctx=ctx, description="Nickname doesn't exist in PUBG")
             return
         elif "data" in player_stat:
             discordSelectQuery = """SELECT pubg_name, banned_commands from discord_profiles WHERE id = %s"""
@@ -233,7 +209,7 @@ class PUBG_Commands(commands.Cog):
                 discordCheckQuery = """SELECT pubg_name from discord_profiles WHERE LOWER(pubg_name) LIKE LOWER(%s)"""
                 discordCheckInsert = (pubgname,)
                 discordCheck = await default.connectDB(discordCheckQuery, discordCheckInsert)
-                if not (discordCheck):
+                if not discordCheck:
                     discordInsertQuery = """INSERT INTO discord_profiles (ID, PUBG_NAME) VALUES (%s,%s) ON CONFLICT (ID) DO UPDATE SET PUBG_NAME=%s"""
                     discordInsertValues = (ctx.author.id, pubgname, pubgname)
                     await default.connectDB(discordInsertQuery, discordInsertValues)
@@ -247,105 +223,79 @@ class PUBG_Commands(commands.Cog):
 
                     if discordSelect:
                         await default.embedMessage(
-                            self,
-                            ctx,
-                            "PUBG name {} replaced with {}".format(discordSelect[0], pubgname),
+                            client=self.client, ctx=ctx, description=f"PUBG name {discordSelect[0]} replaced with {pubgname}"
                         )
                     else:
                         await default.embedMessage(
-                            self, ctx, description="PUBG name {} added to the snipa list".format(pubgname)
+                            client=self.client, ctx=ctx, description=f"PUBG name {pubgname} added to the snipa list"
                         )
                 else:
                     await default.embedMessage(
-                        self,
-                        ctx,
-                        "Name already taken! If it's yours ask the mods to remove it from the person who took it",
+                        client=self.client,
+                        ctx=ctx,
+                        description="Name already taken! If it's yours ask the mods to remove it from the person who took it",
                     )
             else:
-                await  default.embedMessage(ctx, description="You are banned from adding names to snipa list")
+                await default.embedMessage(
+                    client=self.client, ctx=ctx, description="You are banned from adding names to snipa list"
+                )
         else:
             print("UNKNOWN")
 
     @commands.hybrid_command(aliases=["p"], description="Shows your or someones else profile")
-    async def profile(self, ctx, *, name=None):
+    async def profile(self, ctx: commands.Context, *, name=None):
         if name is None:
-            firstName = ctx.author.name
             member = ctx.author
-        elif name.startswith("<@") is True:
-            firstName = name
-            name = name.replace("<@", "")
-            name = name.replace(">", "")
-            member = await ctx.guild.fetch_member(name)
+        elif name.startswith("<@"):
+            result = re.findall("\d+", name)
+            member = self.client.get_user(int(result[0]))
         else:
-            firstName = name
-            await ctx.guild.query_members(name)
             member = discord.utils.get(ctx.guild.members, name=name)
 
-        if name is not None and member is None:
-            discordQuery = """SELECT id, image, pubg_name, banned_commands from discord_profiles WHERE LOWER(pubg_name) LIKE LOWER(%s)"""
-            discordInsert = (name,)
-            discordSelect = await default.connectDB(discordQuery, discordInsert)
-            if discordSelect:
-                await ctx.guild.query_members(name)
-                member = discord.utils.get(ctx.guild.members, name=name)
-                if member is None:
-                    urlProfile = ""
-                else:
-                    urlProfile = member.display_avatar.url
-            if not (discordSelect):
-                await default.embedMessage(
-                    self,
-                    ctx,
-                    "No profile found for {}. Use {}image or {}add first!".format(firstName, ctx.prefix, ctx.prefix),
-                )
-                return
-
-        else:
+        if member:
             discordQuery = """SELECT pubg_name from discord_profiles WHERE id = %s"""
             discordInsert = (member.id,)
             discordSelect = await default.connectDB(discordQuery, discordInsert)
             if discordSelect:
-                urlProfile = member.display_avatar.url
                 discordQuery = """SELECT id, image, pubg_name, banned_commands from discord_profiles WHERE id = %s"""
                 discordInsert = (member.id,)
                 discordSelect = await default.connectDB(discordQuery, discordInsert)
             else:
                 await default.embedMessage(
-                    self,
-                    ctx,
-                    "PUBG name from {} is not on the database use {}add to add your PUBG name to the snipa list".format(
-                        firstName, ctx.prefix
-                    ),
+                    client=self.client,
+                    ctx=ctx,
+                    description=f"PUBG name from {member} is not on the database use {ctx.prefix}add to add your PUBG name to the snipa list",
                 )
                 return
 
-        member = await ctx.guild.fetch_member(discordSelect[0][0])
+            embed = discord.Embed(title="Profile", description="", color=0x000000, timestamp=ctx.message.created_at)
+            embed.set_thumbnail(url=member.display_avatar.url)
+            embed.add_field(name="Discord Name", value=member.name, inline=True)
+            embed.add_field(name="PUBG Name", value=discordSelect[0][2], inline=True)
+            if discordSelect[0][1] is not None:
+                embed.set_image(url=discordSelect[0][1])
+            embed.set_footer(text="Bot made by Tuxsuper", icon_url=self.client.DEV.display_avatar.url)
+            await ctx.send(embed=embed)
 
-        embed = discord.Embed(title="Profile", description="", color=0x000000, timestamp=ctx.message.created_at)
-        embed.set_thumbnail(url=urlProfile)
-        embed.add_field(name="Discord Name", value=member.name, inline=True)
-        embed.add_field(name="PUBG Name", value=discordSelect[0][2], inline=True)
-        if discordSelect[0][1] is not None:
-            embed.set_image(url=discordSelect[0][1])
-        embed.set_footer(text="Bot made by Tuxsuper", icon_url=default.DEV.display_avatar.url)
-        await ctx.send(embed=embed)
+        else:
+            await default.embedMessage(
+                client=self.client,
+                ctx=ctx,
+                description=f"Name used does not exist",
+            )
+            return
 
     @commands.hybrid_command(aliases=["r"], description="Shows your or someones else stats")
-    async def report(self, ctx, *, name=None):
-        if name is None:  # No name used
-            firstName = ctx.author.name
+    async def report(self, ctx: commands.Context, *, name=None):
+        if name is None:
             member = ctx.author
-        elif name.startswith("<@") is True:  # Mention used
-            firstName = name
-            name = name.replace("<@", "")
-            name = name.replace(">", "")
-            member = await ctx.guild.fetch_member(name)
-        else:  # Discord name used
-            firstName = name
-            await ctx.guild.query_members(name)
+        elif name.startswith("<@"):
+            result = re.findall("\d+", name)
+            member = self.client.get_user(int(result[0]))
+        else:
             member = discord.utils.get(ctx.guild.members, name=name)
 
-        if name is not None and member is None:  # PUBG name used
+        if member is None:  # PUBG name used
             discordQuery = """SELECT pubg_name from discord_profiles WHERE LOWER(pubg_name) LIKE LOWER(%s)"""
             discordInsert = (name,)
             discordSelect = await default.connectDB(discordQuery, discordInsert)
@@ -361,15 +311,13 @@ class PUBG_Commands(commands.Cog):
                     name = discordSelect
                 else:
                     await default.embedMessage(
-                        self,
-                        ctx,
-                        "PUBG name {} is not on the database use {}add to add your PUBG name to the snipa list".format(
-                            firstName, ctx.prefix
-                        ),
+                        client=self.client,
+                        ctx=ctx,
+                        description=f"PUBG name {name} is not on the database use {ctx.prefix}add to add your PUBG name to the snipa list",
                     )
                     return
 
-        else:  # Discord, no name or Mention used
+        else:  # The rest
             discordQuery = """SELECT pubg_name from discord_profiles WHERE id = %s"""
             discordInsert = (member.id,)
             discordSelect = await default.connectDB(discordQuery, discordInsert)
@@ -378,35 +326,34 @@ class PUBG_Commands(commands.Cog):
                 name = discordSelect
             else:
                 await default.embedMessage(
-                    self,
-                    ctx,
-                    "PUBG name from {} is not on the database use {}add to add your PUBG name to the snipa list".format(
-                        firstName, ctx.prefix
-                    ),
+                    client=self.client,
+                    ctx=ctx,
+                    description=f"PUBG name from {member} is not on the database use {ctx.prefix}add to add your PUBG name to the snipa list",
                 )
                 return
 
-        name = name.lower()
-
-        playerSelectQuery = """SELECT * from kills WHERE LOWER(name) LIKE LOWER(%s)"""
+        playerSelectQuery = """SELECT name, weapon, causer, distance, health, location, date, match_id from kills WHERE LOWER(name) LIKE LOWER(%s)"""
         playerSelectInsert = (name,)
         playerSelect = await default.connectDB(playerSelectQuery, playerSelectInsert)
 
-        statsSelectQuery = """SELECT * from stats WHERE LOWER(name) LIKE LOWER(%s)"""
+        statsSelectQuery = """SELECT name, kills, deaths, damage_dealt, snipas_killed, distance_travelled, suicides, score, ranking, bounty from stats WHERE LOWER(name) LIKE LOWER(%s)"""
         statsSelectInsert = (name,)
         statsSelect = await default.connectDB(statsSelectQuery, statsSelectInsert)
         statsSelect = statsSelect[0]
 
-        if statsSelect[2] == 0:
+        if statsSelect[2] == 0:  # If deaths == 0 then kd is number of kills
             kd = statsSelect[1]
-        else:
+        else:  # Else it does normal kd
             kd = statsSelect[1] / statsSelect[2]
-        distanceTravelledTotal = (statsSelect[5][0] + statsSelect[5][1] + statsSelect[5][2]) / 1000
 
-        with open("./assets/dictionaries/typeKill.json", "r") as f:
+        distanceTravelledTotal = (
+            statsSelect[5][0] + statsSelect[5][1] + statsSelect[5][2]
+        ) / 1000  # Sum all movement stats and convert them to Km
+
+        with open("./assets/dictionaries/typeKill.json", "r", encoding="utf-8") as f:
             typeKill = json.loads(f.read())
 
-        with open("./assets/dictionaries/simpleCause.json", "r") as f:
+        with open("./assets/dictionaries/simpleCause.json", "r", encoding="utf-8") as f:
             simpleCause = json.loads(f.read())
 
         for index, playerKills in enumerate(playerSelect):
@@ -420,10 +367,10 @@ class PUBG_Commands(commands.Cog):
         for kill in counter:
             typeKill[kill] = typeKill[kill] + counter[kill]
 
-        if typeKill["Gun"] > 0:
+        if typeKill["Gun"] > 0:  # If you have a Gun Kill
             badge = Image.open("./assets/images/badgehaHAA.png")
-        elif statsSelect[8] <= 10:
-            if statsSelect[8] == 1:
+        elif statsSelect[8] <= 10:  # Else if you are top 10
+            if statsSelect[8] == 1:  # If you are top 1
                 badge = Image.open("./assets/images/badgeBruceU.png")
             else:
                 badge = Image.open("./assets/images/badgeCommando.png")
@@ -443,64 +390,35 @@ class PUBG_Commands(commands.Cog):
             align="center",
         )
 
-        reportCard.text((205, 273), "x {}".format(typeKill["Punch"]), (255, 255, 255), font=counter_font)
-        reportCard.text(
-            (205, 481),
-            "x {}".format(typeKill["Vehicle"]),
-            (255, 255, 255),
-            font=counter_font,
-        )
-        reportCard.text(
-            (205, 689),
-            "x {}".format(typeKill["Grenade"]),
-            (255, 255, 255),
-            font=counter_font,
-        )
-        reportCard.text(
-            (205, 897),
-            "x {}".format(typeKill["Panzerfaust"]),
-            (255, 255, 255),
-            font=counter_font,
-        )
-        reportCard.text((205, 1105), "x {}".format(typeKill["C4"]), (255, 255, 255), font=counter_font)
-        reportCard.text(
-            (205, 1313),
-            "x {}".format(typeKill["Glider"]),
-            (255, 255, 255),
-            font=counter_font,
-        )
+        xAxis = 205
+        yAxis = 273
+        color = (255, 255, 255)
+        typeKill_Order = [
+            "Punch",
+            "Vehicle",
+            "Grenade",
+            "Panzerfaust",
+            "C4",
+            "Glider",
+            "Melee Weapon",
+            "Melee Throw",
+            "Molotov",
+            "Crossbow",
+            "Mortar",
+            "Gun",
+        ]
 
-        reportCard.text(
-            (558, 273),
-            "x {}".format(typeKill["Melee Weapon"]),
-            (255, 255, 255),
-            font=counter_font,
-        )
-        reportCard.text(
-            (558, 481),
-            "x {}".format(typeKill["Melee Throw"]),
-            (255, 255, 255),
-            font=counter_font,
-        )
-        reportCard.text(
-            (558, 689),
-            "x {}".format(typeKill["Molotov"]),
-            (255, 255, 255),
-            font=counter_font,
-        )
-        reportCard.text(
-            (558, 897),
-            "x {}".format(typeKill["Crossbow"]),
-            (255, 255, 255),
-            font=counter_font,
-        )
-        reportCard.text(
-            (558, 1104),
-            "x {}".format(typeKill["Mortar"]),
-            (255, 255, 255),
-            font=counter_font,
-        )
-        reportCard.text((558, 1313), "x {}".format(typeKill["Gun"]), (255, 0, 0), font=counter_font)
+        for index, kill in enumerate(typeKill_Order):
+            if index == 6:
+                xAxis = 558
+                yAxis = 273
+
+            if index == 11:
+                color = (255, 0, 0)
+
+            reportCard.text((xAxis, yAxis), f"x {typeKill[kill]}", color, font=counter_font)
+
+            yAxis = yAxis + 208
 
         reportCard.text((852, 262), "Killed Forsen", (255, 255, 255), font=counter_font)
         reportCard.text((852, 378), "Died to Forsen", (255, 255, 255), font=counter_font)
@@ -510,33 +428,33 @@ class PUBG_Commands(commands.Cog):
         reportCard.text((852, 842), "Distance Travelled", (255, 255, 255), font=counter_font)
         reportCard.text((852, 958), "Suicides", (255, 255, 255), font=counter_font)
 
-        reportCard.text((1322, 262), "{}".format(statsSelect[1]), (255, 255, 255), font=counter_font)
-        reportCard.text((1322, 378), "{}".format(statsSelect[2]), (255, 255, 255), font=counter_font)
-        reportCard.text((1322, 491), "{}".format(round(kd, 3)), (255, 255, 255), font=counter_font)
+        reportCard.text((1322, 262), f"{statsSelect[1]}", (255, 255, 255), font=counter_font)
+        reportCard.text((1322, 378), f"{statsSelect[2]}", (255, 255, 255), font=counter_font)
+        reportCard.text((1322, 491), f"{round(kd, 3)}", (255, 255, 255), font=counter_font)
         reportCard.text(
             (1322, 605),
-            "{}".format(round(statsSelect[3], 2)),
+            f"{round(statsSelect[3], 2)}",
             (255, 255, 255),
             font=counter_font,
         )
-        reportCard.text((1322, 721), "{}".format(statsSelect[4]), (255, 255, 255), font=counter_font)
+        reportCard.text((1322, 721), f"{statsSelect[4]}", (255, 255, 255), font=counter_font)
         reportCard.text(
             (1322, 842),
-            "{} km".format(round(distanceTravelledTotal, 2)),
+            f"{round(distanceTravelledTotal, 2)} km",
             (255, 255, 255),
             font=counter_font,
         )
-        reportCard.text((1322, 958), "{}".format(statsSelect[6]), (255, 255, 255), font=counter_font)
+        reportCard.text((1322, 958), f"{statsSelect[6]}", (255, 255, 255), font=counter_font)
 
         reportCard.text((852, 1123), "Score", (255, 255, 255), font=counter_font)
         reportCard.text((852, 1239), "Ranking", (255, 255, 255), font=counter_font)
         reportCard.text((852, 1355), "Bounty", (255, 255, 255), font=counter_font)
 
-        reportCard.text((1152, 1123), "{}".format(statsSelect[7]), (255, 255, 255), font=counter_font)
-        reportCard.text((1152, 1239), "#{}".format(statsSelect[8]), (255, 255, 255), font=counter_font)
+        reportCard.text((1152, 1123), f"{statsSelect[7]}", (255, 255, 255), font=counter_font)
+        reportCard.text((1152, 1239), f"#{statsSelect[8]}", (255, 255, 255), font=counter_font)
         reportCard.text(
             (1152, 1355),
-            "{} pts".format(statsSelect[9]),
+            f"{statsSelect[9]} pts",
             (255, 255, 255),
             font=counter_font,
         )
@@ -547,13 +465,13 @@ class PUBG_Commands(commands.Cog):
         await ctx.send(file=discord.File("./assets/images/reportResult.png"))
 
     @commands.hybrid_command(aliases=["lb"], description="Shows the Leaderboard")
-    async def leaderboard(self, ctx, *, value=None):
+    async def leaderboard(self, ctx: commands.Context, *, value=None):
         if value is None:  # No name used
             page = 0
             offset = 0
         elif value.isdigit():  # Number used
             if int(value) > 999:
-                await  default.embedMessage(ctx, description="Please type numbers less than 1000")
+                await default.embedMessage(client=self.client, ctx=ctx, description="Please type numbers less than 1000")
                 return
             else:
                 page = int(value) - 1
@@ -580,11 +498,9 @@ class PUBG_Commands(commands.Cog):
                     value = discordSelect
                 else:
                     await default.embedMessage(
-                        self,
-                        ctx,
-                        "PUBG name {} is not on the database use {}add to add your PUBG name to the snipa list".format(
-                            firstName, ctx.prefix
-                        ),
+                        client=self.client,
+                        ctx=ctx,
+                        description=f"PUBG name {firstName} is not on the database use {ctx.prefix}add to add your PUBG name to the snipa list",
                     )
                     return
 
@@ -597,11 +513,9 @@ class PUBG_Commands(commands.Cog):
                     value = discordSelect
                 else:
                     await default.embedMessage(
-                        self,
-                        ctx,
-                        "PUBG name from {} is not on the database use {}add to add your PUBG name to the snipa list".format(
-                            firstName, ctx.prefix
-                        ),
+                        client=self.client,
+                        ctx=ctx,
+                        description=f"PUBG name from {firstName} is not on the database use {ctx.prefix}add to add your PUBG name to the snipa list",
                     )
                     return
 
@@ -631,7 +545,7 @@ class PUBG_Commands(commands.Cog):
         basicReport = Image.open("./assets/images/leaderboard.png")
         counter_font = ImageFont.truetype("./assets/fonts/MYRIADPRO-REGULAR.ttf", 50)
         reportCard = ImageDraw.Draw(basicReport)
-        reportCard.text((1751, 57), "Page {}".format(page + 1), (255, 255, 255), font=counter_font)
+        reportCard.text((1751, 57), f"Page {page + 1}", (255, 255, 255), font=counter_font)
 
         for index, user in enumerate(statsSelect):
             if value is not None and not value.isdigit():
@@ -644,20 +558,20 @@ class PUBG_Commands(commands.Cog):
 
             reportCard.text(
                 (xArray[0], yArray[index]),
-                "#{}".format(user[0]),
+                f"#{user[0]}",
                 color,
                 font=counter_font,
                 align="center",
             )
-            reportCard.text((xArray[1], yArray[index]), "{}".format(user[1]), color, font=counter_font)
+            reportCard.text((xArray[1], yArray[index]), f"{user[1]}", color, font=counter_font)
             reportCard.text(
                 (xArray[2], yArray[index]),
-                "{} pts".format(user[2]),
+                f"{user[2]} pts",
                 color,
                 font=counter_font,
             )
-            reportCard.text((xArray[3], yArray[index]), "{}".format(user[3]), color, font=counter_font)
-            reportCard.text((xArray[4], yArray[index]), "{}".format(user[4]), color, font=counter_font)
+            reportCard.text((xArray[3], yArray[index]), f"{user[3]}", color, font=counter_font)
+            reportCard.text((xArray[4], yArray[index]), f"{user[4]}", color, font=counter_font)
 
         basicReport.save("./assets/images/leaderboardResult.png")
 
@@ -679,7 +593,7 @@ class PUBG_Commands(commands.Cog):
 
     @commands.hybrid_command(aliases=["cb"], description="Shows the Customboard")
     @app_commands.choices(choice=customboardChoices)
-    async def customboard(self, ctx, choice, *, value=None):
+    async def customboard(self, ctx: commands.Context, choice, *, value=None):
         if choice is not None:
             choice = choice.lower()
 
@@ -693,13 +607,13 @@ class PUBG_Commands(commands.Cog):
             "suicides": "suicides",
             "bounty": "bounty",
         }
-        if choice in pubgData.customboardValues.customboardArray:
+        if choice in self.customboardArray:
             if value is None:  # No name used
                 page = 1
                 offset = 0
             elif value.isdigit():  # Number used
                 if int(value) > 999:
-                    await  default.embedMessage(ctx, description="Please type numbers less than 1000")
+                    await default.embedMessage(client=self.client, ctx=ctx, description="Please type numbers less than 1000")
                     return
                 else:
                     page = int(value)
@@ -726,11 +640,9 @@ class PUBG_Commands(commands.Cog):
                         value = discordSelect
                     else:
                         await default.embedMessage(
-                            self,
-                            ctx,
-                            "PUBG name {} is not on the database use {}add to add your PUBG name to the snipa list".format(
-                                firstName, ctx.prefix
-                            ),
+                            client=self.client,
+                            ctx=ctx,
+                            description=f"PUBG name {firstName} is not on the database use {ctx.prefix}add to add your PUBG name to the snipa list",
                         )
                         return
 
@@ -743,11 +655,9 @@ class PUBG_Commands(commands.Cog):
                         value = discordSelect
                     else:
                         await default.embedMessage(
-                            self,
-                            ctx,
-                            "PUBG name from {} is not on the database use {}add to add your PUBG name to the snipa list".format(
-                                firstName, ctx.prefix
-                            ),
+                            client=self.client,
+                            ctx=ctx,
+                            description=f"PUBG name from {firstName} is not on the database use {ctx.prefix}add to add your PUBG name to the snipa list",
                         )
                         return
 
@@ -767,7 +677,7 @@ class PUBG_Commands(commands.Cog):
                     case _:
                         rankingQuery = sql.SQL(
                             "SELECT name, ROW_NUMBER() OVER (ORDER BY {} DESC, name) AS rows from stats"
-                        ).format(sql.Identifier(pubgData.customboardValues.customboardArray[choice]))
+                        ).format(sql.Identifier(self.customboardArray[choice]))
                 default.CURSOR.execute(rankingQuery)
                 rankingRows = default.CURSOR.fetchall()
 
@@ -797,14 +707,14 @@ class PUBG_Commands(commands.Cog):
                         "SELECT name, {}, DENSE_RANK() OVER(ORDER BY {} DESC) rank FROM stats GROUP BY name HAVING bounty > 0 ORDER BY rank, name  LIMIT 20 OFFSET %s"
                     ).format(
                         sql.Identifier(valueArray[choice]),
-                        sql.Identifier(pubgData.customboardValues.customboardArray[choice]),
+                        sql.Identifier(self.customboardArray[choice]),
                     )
                 case _:
                     statsSelectQuery = sql.SQL(
                         "SELECT name, {}, DENSE_RANK() OVER(ORDER BY {} DESC) rank FROM stats ORDER BY rank, name LIMIT 20 OFFSET %s"
                     ).format(
                         sql.Identifier(valueArray[choice]),
-                        sql.Identifier(pubgData.customboardValues.customboardArray[choice]),
+                        sql.Identifier(self.customboardArray[choice]),
                     )
 
             statsSelectInsert = (offset,)
@@ -831,18 +741,18 @@ class PUBG_Commands(commands.Cog):
             basicReport = Image.open("./assets/images/customboard.png")
             counter_font = ImageFont.truetype("./assets/fonts/MYRIADPRO-REGULAR.ttf", 50)
             reportCard = ImageDraw.Draw(basicReport)
-            reportCard.text((1750, 57), "Page {}".format(page), (255, 255, 255), font=counter_font)
+            reportCard.text((1750, 57), f"Page {page}", (255, 255, 255), font=counter_font)
             reportCard.text((xArray[1], 210), "Username", (255, 255, 255), font=counter_font)
             reportCard.text(
                 (xArray[2], 210),
-                "{}".format(titleArray[choice]),
+                f"{titleArray[choice]}",
                 (255, 255, 255),
                 font=counter_font,
             )
             reportCard.text((xArray[4], 210), "Username", (255, 255, 255), font=counter_font)
             reportCard.text(
                 (xArray[5], 210),
-                "{}".format(titleArray[choice]),
+                f"{titleArray[choice]}",
                 (255, 255, 255),
                 font=counter_font,
             )
@@ -865,40 +775,40 @@ class PUBG_Commands(commands.Cog):
                 if otherCounter < 10:
                     reportCard.text(
                         (xArray[0], yArray[counter]),
-                        "#{}".format(user[2]),
+                        f"#{user[2]}",
                         color,
                         font=counter_font,
                         align="center",
                     )
                     reportCard.text(
                         (xArray[1], yArray[counter]),
-                        "{}".format(user[0]),
+                        f"{user[0]}",
                         color,
                         font=counter_font,
                     )
                     reportCard.text(
                         (xArray[2], yArray[counter]),
-                        "{}".format(user[1]),
+                        f"{user[1]}",
                         color,
                         font=counter_font,
                     )
                 else:
                     reportCard.text(
                         (xArray[3], yArray[counter]),
-                        "#{}".format(user[2]),
+                        f"#{user[2]}",
                         color,
                         font=counter_font,
                         align="center",
                     )
                     reportCard.text(
                         (xArray[4], yArray[counter]),
-                        "{}".format(user[0]),
+                        f"{user[0]}",
                         color,
                         font=counter_font,
                     )
                     reportCard.text(
                         (xArray[5], yArray[counter]),
-                        "{}".format(user[1]),
+                        f"{user[1]}",
                         color,
                         font=counter_font,
                     )
@@ -911,15 +821,15 @@ class PUBG_Commands(commands.Cog):
             await ctx.send(file=discord.File("./assets/images/customboardResult.png"))
 
     @commands.hybrid_command(aliases=["st"], description="Shows the Scoretable")
-    async def scoretable(self, ctx, *, value=None):
-        with open("./assets/dictionaries/scoreTable.json", "r") as f:
+    async def scoretable(self, ctx: commands.Context, *, value=None):
+        with open("./assets/dictionaries/scoreTable.json", "r", encoding="utf-8") as f:
             scoreTable = json.loads(f.read())
 
         if value is None:
             page = 1
         elif value.isdigit():  # Number used
             if int(value) > 999:
-                await  default.embedMessage(ctx, description="Please type numbers less than 1000")
+                await default.embedMessage(client=self.client, ctx=ctx, description="Please type numbers less than 1000")
                 return
             else:
                 page = int(value)
@@ -930,7 +840,9 @@ class PUBG_Commands(commands.Cog):
                     page = math.ceil((index + 1) / 20)
                     break
             if page == -1:
-                await  default.embedMessage(ctx, description="Weapon {} does not exist in the scoretable".format(value))
+                await default.embedMessage(
+                    client=self.client, ctx=ctx, description=f"Weapon {value} does not exist in the scoretable"
+                )
                 return
 
         limit = page * 20
@@ -943,7 +855,7 @@ class PUBG_Commands(commands.Cog):
         basicReport = Image.open("./assets/images/scoreTable.png")
         counter_font = ImageFont.truetype("./assets/fonts/MYRIADPRO-REGULAR.ttf", 50)
         reportCard = ImageDraw.Draw(basicReport)
-        reportCard.text((1538, 57), "Page {}".format(page), (255, 255, 255), font=counter_font)
+        reportCard.text((1538, 57), f"Page {page}", (255, 255, 255), font=counter_font)
 
         for index, score in enumerate(scoreTable):
             if index == limit:
@@ -963,26 +875,26 @@ class PUBG_Commands(commands.Cog):
                 if otherCounter < 10:
                     reportCard.text(
                         (xArray[0], yArray[counter]),
-                        "{}".format(score),
+                        f"{score}",
                         color,
                         font=counter_font,
                     )
                     reportCard.text(
                         (xArray[1], yArray[counter]),
-                        "{}".format(scoreTable[score]),
+                        f"{scoreTable[score]}",
                         color,
                         font=counter_font,
                     )
                 else:
                     reportCard.text(
                         (xArray[2], yArray[counter]),
-                        "{}".format(score),
+                        f"{score}",
                         color,
                         font=counter_font,
                     )
                     reportCard.text(
                         (xArray[3], yArray[counter]),
-                        "{}".format(scoreTable[score]),
+                        f"{scoreTable[score]}",
                         color,
                         font=counter_font,
                     )
@@ -994,5 +906,5 @@ class PUBG_Commands(commands.Cog):
         await ctx.send(file=discord.File("./assets/images/scoreTableResult.png"))
 
 
-async def setup(client):
+async def setup(client: default.DiscordBot):
     await client.add_cog(PUBG_Commands(client))
