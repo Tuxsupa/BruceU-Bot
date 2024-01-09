@@ -6,8 +6,8 @@
   "Bear": "AI",
   "BRDM-2": "Vehicle",
   "Mountain Bike": "Vehicle",
-  "Blanc": "Vehicle",
   "Coupe RB": "Vehicle",
+  "Coupe SUV": "Vehicle",
   "Train": "Train",
   "Dirt Bike": "Vehicle",
   "Drone": "Drone",
@@ -81,11 +81,13 @@
   "DBS": "Gun",
   "DP-28": "Gun",
   "Deagle": "Gun",
+  "Dragunov": "Gun",
   "M416": "Gun",
   "SLR": "Gun",
   "P18C": "Gun",
   "G36C": "Gun",
   "Groza": "Gun",
+  "JS9": "Gun",
   "Kar98k": "Gun",
   "K2": "Gun",
   "Lynx AMR": "Gun",
@@ -127,6 +129,5 @@
   "Vector": "Gun",
   "Win94": "Gun",
   "S1897": "Gun",
-  "Skorpion": "Gun",
-  "Dragunov": "Gun"
+  "Skorpion": "Gun"
 }
